@@ -6,6 +6,7 @@ import {
   Search, Sun, Moon, Upload, Plus, ArrowUpRight, TrendingUp, TrendingDown, IndianRupee, UserPlus,CheckCircle2, XCircle, PencilLine, BarChart3,Wallet,CalendarClock, Gauge, Cookie, Pause, Play,
 } from 'lucide-react';
 import './App.css';
+import { useSalesOrderStatus } from './zoho.jsx';
 
 // import './Loader_snippet.jsx';
 
@@ -57,10 +58,6 @@ const ROWS = [
 ];
 const TICK = { dispatched: '--gold', loading: '--toast', weighing: '--chilli', delivered: '--leaf' };
 
-const SO_STATUS = [
-  ['Draft', 96, '--w-tan'], ['Confirmed', 214, '--w-blue'], ['Shipped', 132, '--w-gold'],
-  ['Cancelled', 38, '--w-red'], ['Completed', 405, '--w-green'],
-];
 const WEEK = {
   days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
   rev: [320, 410, 255, 510, 703, 610, 335],   // revenue in ₹K
@@ -436,12 +433,16 @@ function Rings() {
 /* sales order status: donut + list + order health */
 function SalesStatus() {
   const ready = useContext(Ready); const r = useRef(null); const [h, setH] = useState(null);
+  const dn = useRef(null); const [tp, setTp] = useState(null);
+  const moveTip = (e) => { const b = dn.current.getBoundingClientRect(); setTp({ x: e.clientX - b.left, y: e.clientY - b.top }); };
+  const { rows: SO_STATUS, loading } = useSalesOrderStatus();
   const R = 66, C = 2 * Math.PI * R, GAP = 3;
   const total = SO_STATUS.reduce((s, x) => s + x[1], 0);
-  const val = (name) => SO_STATUS.find((x) => x[0] === name)[1];
-  const pct = (n) => `${((n / total) * 100).toFixed(1)}%`;
+  const val = (name) => SO_STATUS.find((x) => x[0] === name)?.[1] || 0;
+  const pct = (n) => `${(total ? (n / total) * 100 : 0).toFixed(1)}%`;
   let acc = 0;
-  const segs = SO_STATUS.map(([label, n, c]) => { const len = (n / total) * C; const o = { label, v: n, c, len, off: acc }; acc += len; return o; });
+  const segs = SO_STATUS.map(([label, n, c]) => { const len = total ? (n / total) * C : 0; const o = { label, v: n, c, len, off: acc }; acc += len; return o; });
+  const segKey = segs.map((s) => s.v).join(',');
   const health = [
     [CheckCircle2, 'Completion rate', pct(val('Completed')), '--w-green'],
     [XCircle, 'Cancellation rate', pct(val('Cancelled')), '--w-red'],
@@ -458,32 +459,44 @@ function SalesStatus() {
         .from('.wm-row', { opacity: 0, x: 28, duration: 0.5, stagger: 0.08, clearProps: 'opacity,transform' }, 0.25)
         .from('.wm-sec', { opacity: 0, x: -10, duration: 0.5 }, 0.8)
         .from('.wm-t', { opacity: 0, y: 16, scale: 0.94, duration: 0.5, stagger: 0.08, clearProps: 'opacity,transform' }, 0.9);
+    }, r);
+    return () => c.revert();
+  }, [ready]);
+  // donut segments: re-animate whenever the live counts arrive / change
+  useLayoutEffect(() => {
+    if (!ready) return undefined;
+    const c = gsap.context(() => {
       segs.forEach((s, i) => gsap.fromTo(`.so${i}`, { strokeDasharray: `0 ${C}` }, { strokeDasharray: `${Math.max(0, s.len - GAP)} ${C}`, duration: 1.1, delay: 0.6 + i * 0.12, ease: 'power3.out' }));
     }, r);
     return () => c.revert();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready]);
+  }, [ready, segKey]);
   return (
     <Card className="s6 warm">
       <div className="wm-wrap" ref={r}>
         <div className="wm-h">
           <div className="wm-title"><span className="wm-ico"><ShoppingCart size={18} strokeWidth={2.2} /></span>Sales Order Status</div>
-          <span className="wm-badge">{total.toLocaleString('en-IN')} Total</span>
+          <span className="wm-badge">{loading ? 'Loading…' : `${total.toLocaleString('en-IN')} Total`}</span>
         </div>
 
         <div className="wm-body">
-          <div className="donut">
+          <div className="donut" ref={dn}>
             <svg viewBox="0 0 176 176">
               <g transform="rotate(-90 88 88)">
                 <circle cx="88" cy="88" r={R} fill="none" stroke="var(--w-cream)" strokeWidth="26" />
                 {segs.map((s, i) => (
                   <circle key={s.label} className={`so${i}`} cx="88" cy="88" r={R} fill="none" strokeWidth={h === i ? 30 : 26} strokeDashoffset={-s.off}
                     style={{ stroke: v(s.c), strokeDasharray: `0 ${C}`, opacity: h === null || h === i ? 1 : 0.4, transition: 'stroke-width .25s, opacity .25s', cursor: 'pointer' }}
-                    onMouseEnter={() => setH(i)} onMouseLeave={() => setH(null)} />
+                    onMouseEnter={(e) => { setH(i); moveTip(e); }} onMouseMove={moveTip} onMouseLeave={() => { setH(null); setTp(null); }} />
                 ))}
               </g>
             </svg>
             <div className="donut-c"><b>{(h === null ? total : segs[h].v).toLocaleString('en-IN')}</b><span>{h === null ? 'Orders' : segs[h].label}</span></div>
+            {h !== null && tp && (
+              <div className="so-tip" style={{ left: tp.x, top: tp.y, '--c': v(segs[h].c) }}>
+                <small>{segs[h].label}</small><b>{segs[h].v.toLocaleString('en-IN')}</b>
+              </div>
+            )}
           </div>
 
           <div className="wm-list">

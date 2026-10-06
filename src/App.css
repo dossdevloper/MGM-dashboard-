@@ -90,7 +90,7 @@ html,*{scrollbar-width:thin;scrollbar-color:var(--sb-thumb) transparent}
 .donut-w{display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center}
 .donut{position:relative;width:150px;height:150px;flex:none}
 .donut svg{width:100%;height:100%;display:block}
-.donut-c{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.donut-c{position:absolute;inset:0;display:grid;place-content:center;text-align:center;pointer-events:none}
 .donut-c b{font:600 19px var(--f-num);font-variant-numeric:tabular-nums}.donut-c span{font-size:10.5px;color:var(--muted)}
 .dl{flex:1;min-width:130px;display:grid;gap:2px}
 .dl-i{display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:7px;font-size:12px;color:var(--muted);transition:background .15s}
@@ -313,12 +313,12 @@ td.id{color:var(--muted);font-size:11.5px}td.num,th.num{text-align:right;font-we
 .wm-ico svg{width:15px;height:15px}
 .wm-badge{padding:3px 10px;border-radius:99px;font:600 11px 'Poppins',var(--f-ui);color:var(--w-orange);background:color-mix(in srgb,var(--w-orange) 10%,transparent);border:1px solid color-mix(in srgb,var(--w-orange) 35%,transparent)}
 
-.wm-body{flex:1;display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;padding:0 0 4px}
+.wm-body{flex:1;display:flex;align-items:center;justify-content:space-between;gap:28px;flex-wrap:wrap;padding:0 0 4px 24px}
 .warm .donut{width:150px;height:150px}
 .warm .donut svg{width:100%;height:100%;display:block}
 .warm .donut-c b{font:700 21px 'Poppins',var(--f-ui);color:var(--w-ink)}
 .warm .donut-c span{font:500 10.5px 'Poppins',var(--f-ui);color:var(--w-sub)}
-.wm-list{flex:1;min-width:170px;max-width:300px;display:grid;gap:6px}
+.wm-list{flex:1;min-width:170px;max-width:340px;margin-left:auto;display:grid;gap:6px}
 
 .wm-row{display:flex;align-items:center;gap:8px;padding:6px 11px;border:1px solid var(--w-line);border-radius:10px;font:500 12px 'Poppins',var(--f-ui);color:var(--w-sub);background:#fff;transition:background .2s,border-color .2s,opacity .25s}
 :root[data-theme="dark"] .wm-row{background:transparent}
@@ -350,7 +350,7 @@ td.id{color:var(--muted);font-size:11.5px}td.num,th.num{text-align:right;font-we
 .wm-t b{font:700 15px/1.2 'Poppins',var(--f-ui);color:var(--c);font-variant-numeric:tabular-nums}
 .wm-t:hover{border-color:color-mix(in srgb,var(--c) 55%,transparent);background:color-mix(in srgb,var(--c) 11%,transparent)}
 
-@media (max-width:520px){.wm-tiles{grid-template-columns:1fr}.warm{padding:14px}}
+@media (max-width:520px){.wm-tiles{grid-template-columns:1fr}.warm{padding:14px}.wm-body{justify-content:center;padding-left:0}.wm-list{margin-left:0;max-width:none}}
 @media (prefers-reduced-motion:reduce){.warm,.warm *{transition:none!important;animation:none!important}}
 
 /* ===== payments ===== */
@@ -425,3 +425,9 @@ td.id{color:var(--muted);font-size:11.5px}td.num,th.num{text-align:right;font-we
   .iv-col + .iv-col{border-left:0;border-top:1px solid var(--w-line)}
 }
 @media (max-width:520px){.iv-legend{grid-template-columns:1fr}.iv-col{padding:14px 12px 18px}}
+/* sales order donut: floating count card on hover */
+.so-tip{position:absolute;z-index:5;pointer-events:none;transform:translate(14px,calc(-100% - 10px));min-width:96px;padding:10px 16px 11px;border-radius:14px;background:#fff;box-shadow:0 10px 28px rgba(60,40,20,.16),0 2px 6px rgba(60,40,20,.08);font-family:'Poppins',var(--f-ui);white-space:nowrap;animation:wmTip .18s ease-out}
+.so-tip small{display:block;font-size:12.5px;font-weight:500;color:var(--c)}
+.so-tip b{display:block;margin-top:2px;font-size:22px;font-weight:800;color:#141826;font-variant-numeric:tabular-nums;line-height:1.15}
+:root[data-theme="dark"] .so-tip{background:var(--card)}
+:root[data-theme="dark"] .so-tip b{color:var(--text,#fff)}
