@@ -3,7 +3,7 @@ import gsap from 'gsap';
 import {
   Users, Contact, Store, MapPin, Truck, Package, FileText, ShoppingCart, Repeat, Scale, Send,
   Droplets, MapPinned, CarFront, Boxes, Layers, Barcode, ListChecks, Tag, Ruler, ClipboardList,
-  Search, Sun, Moon, Upload, Plus, ArrowUpRight, TrendingUp, TrendingDown, IndianRupee, UserPlus,CheckCircle2, XCircle, PencilLine, BarChart3,Wallet,CalendarClock, Gauge, Cookie,
+  Search, Sun, Moon, Upload, Plus, ArrowUpRight, TrendingUp, TrendingDown, IndianRupee, UserPlus,CheckCircle2, XCircle, PencilLine, BarChart3,Wallet,CalendarClock, Gauge, Cookie, Pause, Play,
 } from 'lucide-react';
 import './App.css';
 
@@ -857,9 +857,11 @@ function FactoryLine({ greet }) {
   const [m, setM] = useState({});
   const root = useRef(null); const discEl = useRef(null); const cartonEl = useRef(null); const truckEl = useRef(null);
   const count = useRef(0); const trucks = useRef(0);
-
+  const [running, setRunning] = useState(true);
+const ctxRef = useRef(null);
   // live metrics (swap with Zoho Creator API data later)
   useEffect(() => {
+    if (!running) return undefined;  
     const b = LINE_UNITS[unit];
     const tick = () => setM({
       mix: `${jig(b.mix, 6)} kg batch`, roll: `${jig(1.2, 0.12, 2)} mm sheet`, cut: `${jig(b.rate, 24)} pcs/min`,
@@ -869,7 +871,7 @@ function FactoryLine({ greet }) {
     tick();
     const i = setInterval(tick, 2200);
     return () => clearInterval(i);
-  }, [unit]);
+  }, [unit,running]);
 
   useLayoutEffect(() => {
     if (!ready) return undefined;
@@ -977,20 +979,32 @@ function FactoryLine({ greet }) {
         .to('.fl-toast', { opacity: 0, duration: 0.4 }, 15.2)
         .to({}, { duration: 0.001 }, 15.999);
     }, root);
+    ctxRef.current = ctx; 
     return () => ctx.revert();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
+
+    useEffect(() => {
+    const c = ctxRef.current;
+    if (!c) return;
+    c.data.forEach((a) => {
+      if (a.parent === gsap.globalTimeline) running ? a.resume() : a.pause();
+    });
+  }, [running, ready]);
 
   return (
     <Card className="s12 fl">
 <div className="card-h fl-h">
   <div className="row" style={{ marginLeft: 'auto' }}>
-    <span className="fl-live"><i />Line running</span>
+    <span className={`fl-live ${running ? '' : 'off'}`}><i />{running ? 'Line running' : 'Line stopped'}</span>
+    {/* <button className={`fl-ctl ${running ? '' : 'off'}`} onClick={() => setRunning(!running)} aria-pressed={!running}>
+      {running ? <><Pause />Stop</> : <><Play />Start</>}
+    </button> */}
     <Seg options={Object.keys(LINE_UNITS)} value={unit} onChange={setUnit} />
   </div>
 </div>
 
-      <div className="fl-stage" ref={root}>
+<div className={`fl-stage ${running ? '' : 'paused'}`} ref={root}>
         <span className="fl-scan" />
         <svg className="fl-svg" viewBox="0 0 1360 400" role="img" aria-label="Animated production line from dough mixing to truck dispatch">
           
@@ -1028,8 +1042,28 @@ function FactoryLine({ greet }) {
           <g transform="translate(100,204)">
             <g className="fl-paddle"><rect x="-32" y="-4" width="64" height="8" rx="4" /><rect x="-4" y="-32" width="8" height="64" rx="4" /></g>
           </g>
-          <rect className="fl-body" x="160" y="176" width="30" height="40" rx="6" />
-          <circle className="fl-led" cx="175" cy="188" r="3.5" />
+{/* motor starter: green I = start, red O = stop */}
+<rect className="fl-body" x="162" y="156" width="34" height="62" rx="6" />
+<text className="fl-plabel" x="179" y="165" textAnchor="middle">MOTOR</text>
+<circle className={`fl-led ${running ? '' : 'off'}`} cx="179" cy="174" r="3.5" />
+
+<g className={`fl-sbtn go ${running ? 'on' : ''}`} role="button" tabIndex={0} aria-label="Start line"
+   onClick={() => setRunning(true)}
+   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setRunning(true); } }}>
+  <circle className="hit" cx="179" cy="190" r="10" />
+  <circle className="ring" cx="179" cy="190" r="8" />
+  <circle className="cap" cx="179" cy="190" r="6" />
+  <text x="179" y="193" textAnchor="middle">I</text>
+</g>
+
+<g className={`fl-sbtn stop ${running ? '' : 'on'}`} role="button" tabIndex={0} aria-label="Stop line"
+   onClick={() => setRunning(false)}
+   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setRunning(false); } }}>
+  <circle className="hit" cx="179" cy="207" r="10" />
+  <circle className="ring" cx="179" cy="207" r="8" />
+  <circle className="cap" cx="179" cy="207" r="6" />
+  <text x="179" y="210" textAnchor="middle">O</text>
+</g>
           <rect className="fl-body" x="160" y="219" width="96" height="12" rx="3" />
           <circle className="fl-valve" cx="200" cy="225" r="7" />
           {[0, 1, 2].map((i) => <circle key={i} className="fl-dough" cx="166" cy="225" r="3.6" />)}
@@ -1190,6 +1224,8 @@ export default function App() {
     return () => c.revert();
   }, [ready]);
 
+
+
   const hr = new Date().getHours();
   const greet = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
 
@@ -1233,7 +1269,7 @@ export default function App() {
           <VBars title="Brand share" sub="% of dispatched volume" data={BRANDS} unit="%" link="Brand_Report" colorFor={(_, i) => ['--gold', '--chilli', '--leaf', '--volt', '--toast'][i]} />
           <VBars title="Weight variance" sub="Daily check vs 1% tolerance" data={WEIGHT} limit={1} unit="%" link="Daily_Weight_Checking_Report" colorFor={(val) => (val > 1 ? '--chilli' : '--leaf')} />
           <Rings />
-          <Dispatches />
+          {/* <Dispatches /> */}
         </div>
         <div className="note">Sample data shown. Connect to Zoho Creator to see live records.</div>
       </div>

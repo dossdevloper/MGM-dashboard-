@@ -170,6 +170,40 @@ td.id{color:var(--muted);font-size:11.5px}td.num,th.num{text-align:right;font-we
 /* ===== factory line ===== */
 .fl-live{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:600;color:var(--leaf)}
 .fl-live i{width:7px;height:7px;border-radius:50%;background:var(--leaf);animation:pulse 2.4s infinite}
+.fl-live.off{color:var(--chilli)}
+.fl-live.off i{background:var(--chilli);animation:none}
+
+/* start / stop button */
+.fl-ctl{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:8px;font:600 11px var(--f-ui);
+  color:var(--leaf);background:color-mix(in srgb,var(--leaf) 10%,transparent);border:1px solid color-mix(in srgb,var(--leaf) 40%,transparent);
+  transition:background .2s,border-color .2s,color .2s}
+.fl-ctl svg{width:13px;height:13px}
+.fl-ctl:hover{background:color-mix(in srgb,var(--leaf) 18%,transparent)}
+.fl-ctl.off{color:var(--chilli);background:color-mix(in srgb,var(--chilli) 10%,transparent);border-color:color-mix(in srgb,var(--chilli) 45%,transparent)}
+.fl-ctl.off:hover{background:color-mix(in srgb,var(--chilli) 18%,transparent)}
+
+/* stopped state: red frame, CSS animations frozen */
+.fl-stage{transition:border-color .25s}
+.fl-stage.paused{border-color:color-mix(in srgb,var(--chilli) 55%,var(--line))}
+.fl-stage.paused,.fl-stage.paused *{animation-play-state:paused!important}
+.fl-stage.paused .fl-scan{opacity:0}
+
+/* motor starter on the mixer: green I = start, red O = stop, LED shows state */
+.fl-svg .fl-led.off{fill:var(--chilli);stroke:color-mix(in srgb,var(--chilli) 35%,transparent)}
+.fl-stage.paused .fl-led{opacity:1!important}
+.fl-svg .fl-sbtn{cursor:pointer;outline:none}
+.fl-svg .fl-sbtn .hit{fill:transparent}
+.fl-svg .fl-sbtn .ring{fill:var(--soft);stroke:var(--st);stroke-width:1.4}
+.fl-svg .fl-sbtn .cap{stroke:rgba(0,0,0,.3);stroke-width:1;transform-box:fill-box;transform-origin:center;transition:transform .12s,fill .12s}
+.fl-svg .fl-sbtn.go .cap{fill:var(--leaf)}
+.fl-svg .fl-sbtn.stop .cap{fill:var(--chilli)}
+.fl-svg .fl-sbtn:hover .cap{transform:scale(1.07)}
+.fl-svg .fl-sbtn:active .cap,.fl-svg .fl-sbtn.on .cap{transform:scale(.84)}
+.fl-svg .fl-sbtn.go.on .cap{fill:color-mix(in srgb,var(--leaf) 70%,#000)}
+.fl-svg .fl-sbtn.stop.on .cap{fill:color-mix(in srgb,var(--chilli) 70%,#000)}
+.fl-svg .fl-sbtn:focus-visible .ring{stroke:var(--volt);stroke-width:2.2}
+.fl-svg .fl-sbtn text{font:800 8px var(--f-ui);fill:#fff;pointer-events:none}
+.fl-svg .fl-plabel{font:700 5.5px var(--f-ui);fill:var(--muted);letter-spacing:.12em}
 .fl-stage{position:relative;overflow-x:auto;border-radius:10px;border:1px solid var(--line);
   background:
     linear-gradient(color-mix(in srgb,var(--line) 60%,transparent) 1px,transparent 1px) 0 0/32px 32px,
@@ -192,7 +226,7 @@ td.id{color:var(--muted);font-size:11.5px}td.num,th.num{text-align:right;font-we
 .fl-svg .fl-paddle rect{fill:var(--gold);stroke:var(--maroon);stroke-width:1.2}
 .fl-svg .fl-flour{fill:var(--muted)}
 .fl-svg .fl-dough{fill:var(--gold)}
-.fl-svg .fl-led{fill:var(--leaf);filter:drop-shadow(0 0 3px var(--leaf))}
+.fl-svg .fl-led{fill:var(--leaf);stroke:color-mix(in srgb,var(--leaf) 35%,transparent);stroke-width:4;paint-order:stroke}
 .fl-svg .fl-valve{fill:var(--card);stroke:var(--gold);stroke-width:2}
 .fl-svg .fl-roller{fill:var(--card);stroke:var(--gold);stroke-width:2}
 .fl-svg .fl-tick{stroke:var(--gold);stroke-width:3;stroke-linecap:round}
@@ -202,16 +236,17 @@ td.id{color:var(--muted);font-size:11.5px}td.num,th.num{text-align:right;font-we
 .fl-svg .fl-rod{fill:var(--muted)}
 .fl-svg .fl-die{fill:var(--gold);stroke:var(--maroon);stroke-width:1.4}
 .fl-svg .fl-flash{fill:none;stroke:var(--gold);stroke-width:2.5}
-.fl-svg .fl-lamp{fill:var(--chilli);filter:drop-shadow(0 0 4px var(--chilli))}
+.fl-svg .fl-lamp{fill:var(--chilli);stroke:color-mix(in srgb,var(--chilli) 30%,transparent);stroke-width:3;paint-order:stroke}
 .fl-svg .fl-heat{fill:none;stroke:var(--toast);stroke-width:2;stroke-linecap:round}
-.fl-svg .fl-glass{fill:none;stroke:var(--toast);stroke-width:1.6;stroke-dasharray:6 4;filter:drop-shadow(0 0 4px color-mix(in srgb,var(--toast) 50%,transparent))}
+.fl-svg .fl-glass{fill:none;stroke:var(--toast);stroke-width:1.6;stroke-dasharray:6 4}
+.fl-svg *{outline:none}
 .fl-svg .fl-steam{fill:var(--muted);opacity:0}
 .fl-svg .fl-needle line{stroke:var(--chilli);stroke-width:2.4;stroke-linecap:round}
 .fl-svg .fl-tag{font:700 10px var(--f-ui);fill:var(--toast);letter-spacing:.22em}
 .fl-svg .fl-screen{fill:var(--card);stroke:var(--volt);stroke-width:1.4}
 .fl-svg .fl-txt{font:700 11px var(--f-num);fill:color-mix(in srgb,var(--volt) 80%,var(--text))}
 .fl-svg .fl-plate{fill:var(--soft);stroke:var(--gold);stroke-width:2}
-.fl-svg .fl-beam{fill:var(--volt);opacity:0;filter:drop-shadow(0 0 6px var(--volt))}
+.fl-svg .fl-beam{fill:var(--volt);opacity:0}
 .fl-svg .fl-okc{fill:var(--leaf)}
 .fl-svg .fl-belt{fill:url(#flBeltG);stroke:var(--st);stroke-width:1.2}
 .fl-svg .fl-tread{fill:none;stroke:rgba(255,255,255,.4);stroke-width:2;stroke-dasharray:6 10;animation:flBelt .2s linear infinite}
@@ -233,8 +268,8 @@ td.id{color:var(--muted);font-size:11.5px}td.num,th.num{text-align:right;font-we
 .fl-svg .fl-toast text{font:700 11px var(--f-ui);letter-spacing:.06em;fill:color-mix(in srgb,var(--leaf) 75%,var(--text))}
 .fl-svg .fl-flow{stroke:var(--gold);opacity:.7;stroke-width:1.5;stroke-dasharray:4 8;animation:flFlow 1.2s linear infinite}
 @keyframes flFlow{to{stroke-dashoffset:-24}}
-.fl-svg .fl-node{fill:var(--gold);filter:drop-shadow(0 0 4px var(--gold))}
-.fl-svg .fl-pulse{fill:var(--volt);filter:drop-shadow(0 0 6px var(--volt))}
+.fl-svg .fl-node{fill:var(--gold);stroke:color-mix(in srgb,var(--gold) 30%,transparent);stroke-width:5;paint-order:stroke}
+.fl-svg .fl-pulse{fill:var(--volt);stroke:color-mix(in srgb,var(--volt) 30%,transparent);stroke-width:6;paint-order:stroke}
 .fl-svg .fl-no{font:800 12px var(--f-num);fill:var(--chilli);letter-spacing:.08em}
 .fl-svg .fl-name{font:700 12px var(--f-ui);fill:var(--text);letter-spacing:.12em}
 .fl-svg .fl-met{font:600 12px var(--f-num);fill:color-mix(in srgb,var(--volt) 80%,var(--text))}
