@@ -378,7 +378,7 @@ td.id{color:var(--muted);font-size:11.5px}td.num,th.num{text-align:right;font-we
 .pm-grid{position:absolute;left:0;right:0;border-top:1px dashed var(--w-line)}
 .pm-cols{position:absolute;inset:0;display:grid;grid-template-columns:repeat(12,minmax(0,1fr))}
 .pm-col{position:relative;display:flex;align-items:flex-end;justify-content:center;cursor:default}
-.pm-bar{width:46%;max-width:38px;min-height:4px;border-radius:7px 7px 3px 3px;background:color-mix(in srgb,var(--w-orange) 22%,transparent);transform-origin:bottom;transition:background .3s,filter .2s}
+.pm-bar{width:46%;max-width:38px;min-height:4px;border-radius:7px 7px 3px 3px;background:color-mix(in srgb,var(--w-orange) 22%,transparent);transform-origin:bottom;transition:background .3s,filter .2s,height .6s cubic-bezier(.2,.8,.2,1)}
 .pm-bar.on{background:linear-gradient(180deg,var(--w-orange),color-mix(in srgb,var(--w-orange) 75%,var(--w-gold)))}
 .pm-col:hover .pm-bar{filter:saturate(1.25) brightness(1.06)}
 .pm-col:hover .pm-bar:not(.on){background:color-mix(in srgb,var(--w-orange) 45%,transparent)}
@@ -431,3 +431,32 @@ td.id{color:var(--muted);font-size:11.5px}td.num,th.num{text-align:right;font-we
 .so-tip b{display:block;margin-top:2px;font-size:22px;font-weight:800;color:#141826;font-variant-numeric:tabular-nums;line-height:1.15}
 :root[data-theme="dark"] .so-tip{background:var(--card)}
 :root[data-theme="dark"] .so-tip b{color:var(--text,#fff)}
+
+/* payments: chart on the left, status breakdown on the right */
+.pm-grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,34%);border-top:1px solid var(--w-line)}
+.pm-grid2 .pm-tabs{border-top:0}
+.pm-left{min-width:0}
+.ps{display:flex;flex-direction:column;padding:16px 18px 18px;border-left:1px solid var(--w-line);background:linear-gradient(160deg,color-mix(in srgb,var(--w-green) 7%,var(--card)) 0%,var(--w-cream) 100%);border-bottom-right-radius:inherit}
+.ps-k{display:flex;align-items:center;justify-content:space-between;gap:8px;font:700 10px 'Poppins',var(--f-ui);letter-spacing:.09em;text-transform:uppercase;color:var(--w-green)}
+.ps-k em{font-style:normal;letter-spacing:0;text-transform:none;font-weight:600;font-size:10.5px;padding:2px 9px;border-radius:999px;color:var(--w-sub);background:color-mix(in srgb,var(--w-tan) 12%,transparent);border:1px solid var(--w-line)}
+.ps-total{margin-top:8px;font:800 28px/1.1 'Poppins',var(--f-ui);color:var(--w-ink);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.ps-sub{margin-top:3px;font:500 11px 'Poppins',var(--f-ui);color:var(--w-sub)}
+.ps-stack{display:flex;gap:3px;height:8px;margin:14px 0 14px;border-radius:999px;overflow:hidden;background:color-mix(in srgb,var(--w-tan) 14%,transparent)}
+.ps-stack i{display:block;height:100%;min-width:0;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.ps-stack i:first-child{border-radius:999px 0 0 999px}.ps-stack i:last-child{border-radius:0 999px 999px 0}
+.ps-rows{display:grid;gap:9px}
+.ps-row{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:13px;background:var(--card);border:1px solid color-mix(in srgb,var(--c) 28%,var(--w-line));box-shadow:0 1px 2px rgba(60,40,20,.04);transition:transform .2s,box-shadow .2s,border-color .2s}
+.ps-row:hover{transform:translateY(-2px);border-color:var(--c);box-shadow:0 8px 20px color-mix(in srgb,var(--c) 18%,transparent)}
+.ps-ic{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:11px;color:var(--c);background:color-mix(in srgb,var(--c) 13%,transparent)}
+.ps-mid{flex:1;min-width:0}
+.ps-l{display:flex;align-items:baseline;gap:7px;font:600 12.5px 'Poppins',var(--f-ui);color:var(--w-ink)}
+.ps-l small{font-weight:500;font-size:10.5px;color:var(--w-sub);opacity:.85}
+.ps-bar{height:5px;margin-top:6px;border-radius:999px;background:color-mix(in srgb,var(--c) 12%,transparent);overflow:hidden}
+.ps-bar i{display:block;height:100%;border-radius:inherit;background:var(--c);transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.ps-r{text-align:right;flex:none}
+.ps-r b{display:block;font:700 14.5px 'Poppins',var(--f-ui);color:var(--c);font-variant-numeric:tabular-nums}
+.ps-r small{font:600 10.5px 'Poppins',var(--f-ui);color:var(--w-sub)}
+@media (max-width:1000px){
+  .pm-grid2{grid-template-columns:1fr}
+  .ps{border-left:0;border-top:1px solid var(--w-line);border-bottom-left-radius:inherit}
+}

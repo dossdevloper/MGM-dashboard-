@@ -3,10 +3,10 @@ import gsap from 'gsap';
 import {
   Users, Contact, Store, MapPin, Truck, Package, FileText, ShoppingCart, Repeat, Scale, Send,
   Droplets, MapPinned, CarFront, Boxes, Layers, Barcode, ListChecks, Tag, Ruler, ClipboardList,
-  Search, Sun, Moon, Upload, Plus, ArrowUpRight, TrendingUp, TrendingDown, IndianRupee, UserPlus,CheckCircle2, XCircle, PencilLine, BarChart3,Wallet,CalendarClock, Gauge, Cookie, Pause, Play,
+  Search, Sun, Moon, Upload, Plus, ArrowUpRight, TrendingUp, TrendingDown, IndianRupee, UserPlus,CheckCircle2, XCircle, Clock3, PencilLine, BarChart3,Wallet,CalendarClock, Gauge, Cookie, Pause, Play,
 } from 'lucide-react';
 import './App.css';
-import { useSalesOrderStatus } from './zoho.jsx';
+import { useSalesOrderStatus, usePayments, PAYMENTS } from './zoho.jsx';
 
 // import './Loader_snippet.jsx';
 
@@ -69,10 +69,6 @@ const TODAY = [
 ];
 
 const PAY_MONTHS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
-const PAY_DATA = [182000, 214500, 196800, 238200, 221400, 264900, 226100, 0, 0, 0, 0, 0]; // Apr..Mar
-const PAY_TODAY = { amt: 18400, n: 3 };
-const PAY_WEEK = { amt: 142300, n: 9 };
-const PAY_N = { month: 17, year: 41 };
 
 const INV_REPORT = 'All_Invoices'; // change to your Zoho Creator invoice report link name
 const INV_STATUS = [
@@ -606,23 +602,30 @@ function WeeklyRevenue() {
 function Payments() {
   const ready = useContext(Ready); const r = useRef(null);
   const [tab, setTab] = useState('This month');
+  const { data: pay, loading } = usePayments();
   const now = new Date();
   const cur = (now.getMonth() + 9) % 12; // Apr = 0 ... Mar = 11
   const fy = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   const fyLabel = `FY ${fy}–${String(fy + 1).slice(2)}`;
-  const vals = PAY_DATA.map((x, i) => (i > cur ? 0 : x));
-  const month = vals[cur]; const year = vals.reduce((s, x) => s + x, 0);
+  const vals = pay.months.map((x, i) => (i > cur ? 0 : x));
   const inr = (n) => `₹${n.toLocaleString('en-IN')}`;
   const short = (n) => (n >= 100000 ? `${+(n / 100000).toFixed(2)}L` : n >= 1000 ? `${+(n / 1000).toFixed(1)}K` : `${n}`);
   const top = Math.max(100000, Math.ceil(Math.max(...vals) / 100000) * 100000);
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => top * t);
+  const cust = (n) => (loading ? 'Loading…' : `${n} customer${n === 1 ? '' : 's'}`);
   const tabs = [
-    ['Today', PAY_TODAY.amt, `${PAY_TODAY.n} customers`, '--w-purple'],
-    ['This week', PAY_WEEK.amt, `${PAY_WEEK.n} customers`, '--w-blue'],
-    ['This month', month, `${PAY_N.month} customers`, '--w-orange'],
-    ['This year', year, `${PAY_N.year} customers`, '--w-green'],
+    ['Today', pay.today.amt, cust(pay.today.n), '--w-purple'],
+    ['This week', pay.week.amt, cust(pay.week.n), '--w-blue'],
+    ['This month', pay.month.amt, cust(pay.month.n), '--w-orange'],
+    ['This year', pay.year.amt, cust(pay.year.n), '--w-green'],
   ];
   const isOn = (i) => (tab === 'This year' ? i <= cur : i === cur);
+  // right panel: amount by Payment_Status for the selected period
+  const key = { Today: 'today', 'This week': 'week', 'This month': 'month', 'This year': 'year' }[tab];
+  const stIcon = { ok: CheckCircle2, wait: Clock3, x: XCircle };
+  const stRows = PAYMENTS.statuses.map(([label, c, ic]) => ({ label, c, Ic: stIcon[ic] || CheckCircle2, ...(pay.status?.[key]?.[label] || { amt: 0, n: 0 }) }));
+  const stTotal = stRows.reduce((s, x) => s + x.amt, 0);
+  const share = (n) => (stTotal ? (n / stTotal) * 100 : 0);
   useLayoutEffect(() => {
     if (!ready) return undefined;
     const c = gsap.context(() => {
@@ -631,7 +634,9 @@ function Payments() {
         .from('.pm-tab', { opacity: 0, y: 14, duration: 0.5, stagger: 0.08, clearProps: 'opacity,transform' }, 0.1)
         .from('.pm-top', { opacity: 0, duration: 0.5 }, 0.4)
         .fromTo('.pm-bar', { scaleY: 0 }, { scaleY: 1, duration: 0.9, stagger: 0.05, ease: 'back.out(1.3)' }, 0.5)
-        .from('.pm-x span', { opacity: 0, y: 6, duration: 0.4, stagger: 0.03 }, 0.7);
+        .from('.pm-x span', { opacity: 0, y: 6, duration: 0.4, stagger: 0.03 }, 0.7)
+        .from('.ps', { opacity: 0, x: 24, duration: 0.6, clearProps: 'opacity,transform' }, 0.3)
+        .from('.ps-row', { opacity: 0, y: 12, duration: 0.45, stagger: 0.08, clearProps: 'opacity,transform' }, 0.6);
     }, r);
     return () => c.revert();
   }, [ready]);
@@ -643,6 +648,8 @@ function Payments() {
           <span className="wm-badge">{fyLabel}</span>
         </div>
 
+        <div className="pm-grid2">
+        <div className="pm-left">
         <div className="pm-tabs">
           {tabs.map(([name, amt, sub, c]) => (
             <button key={name} className={`pm-tab ${tab === name ? 'on' : ''}`} style={{ '--c': v(c) }} onClick={() => setTab(name)}>
@@ -675,6 +682,29 @@ function Payments() {
             </div>
             <div className="pm-x">{PAY_MONTHS.map((m, i) => <span key={m} className={i === cur ? 'cur' : ''}>{m}</span>)}</div>
           </div>
+        </div>
+        </div>
+
+        <aside className="ps">
+          <div className="ps-k">Payment status <em>{tab}</em></div>
+          <div className="ps-total">{inr(stTotal)}</div>
+          <div className="ps-sub">{loading ? 'Loading…' : `${stRows.reduce((s, x) => s + x.n, 0)} payments · ${share(stRows[0]?.amt || 0).toFixed(1)}% ${stRows[0]?.label.toLowerCase() || ''}`}</div>
+          <div className="ps-stack">
+            {stRows.map((x) => <i key={x.label} style={{ width: `${share(x.amt)}%`, background: v(x.c) }} title={`${x.label}: ${inr(x.amt)}`} />)}
+          </div>
+          <div className="ps-rows">
+            {stRows.map(({ label, c, Ic, amt, n }) => (
+              <a key={label} className="ps-row" style={{ '--c': v(c) }} href={zoho(PAYMENTS.report)} target="_blank" rel="noopener noreferrer">
+                <span className="ps-ic"><Ic size={18} strokeWidth={2.2} /></span>
+                <div className="ps-mid">
+                  <div className="ps-l">{label}<small>{n} {n === 1 ? 'payment' : 'payments'}</small></div>
+                  <div className="ps-bar"><i style={{ width: `${share(amt)}%` }} /></div>
+                </div>
+                <div className="ps-r"><b>{inr(amt)}</b><small>{share(amt).toFixed(1)}%</small></div>
+              </a>
+            ))}
+          </div>
+        </aside>
         </div>
       </div>
     </Card>
