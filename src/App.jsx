@@ -6,7 +6,7 @@ import {
   Search, Sun, Moon, Upload, Plus, ArrowUpRight, TrendingUp, TrendingDown, IndianRupee, UserPlus,CheckCircle2, XCircle, Clock3, PencilLine, BarChart3,Wallet,CalendarClock, Gauge, Cookie, Pause, Play,
 } from 'lucide-react';
 import './App.css';
-import { useSalesOrderStatus, usePayments, PAYMENTS, useInvoices, INVOICES as INV_CFG } from './zoho.jsx';
+import { useSalesOrderStatus, usePayments, PAYMENTS, useInvoices, useWeeklyRevenue, useTodayHighlights, INVOICES as INV_CFG } from './zoho.jsx';
 
 // import './Loader_snippet.jsx';
 
@@ -57,16 +57,6 @@ const ROWS = [
   ['DSP-2036', 'Metro Retail Hub', 'TN 07 CK 3358', 'Masala Appalam · 250g', 2.2, 'dispatched', '#12A150'],
 ];
 const TICK = { dispatched: '--gold', loading: '--toast', weighing: '--chilli', delivered: '--leaf' };
-
-const WEEK = {
-  days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-  rev: [320, 410, 255, 510, 703, 610, 335],   // revenue in ₹K
-  ord: [90, 115, 72, 144, 201, 176, 95],
-};
-const TODAY = [
-  [ShoppingCart, 'New Orders', '24', '--w-orange'], [IndianRupee, 'Revenue', '₹87.4K', '--w-green'],
-  [Truck, 'Deliveries', '18 done', '--w-blue'], [UserPlus, 'New Customers', '7 joined', '--w-purple'],
-];
 
 const PAY_MONTHS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
 
@@ -505,28 +495,52 @@ function SalesStatus() {
 }
 
 /* weekly revenue (₹K) + orders, with today's highlights */
+// round a max value up to 4 even axis steps (e.g. 703000 -> 800000, 7 -> 8)
+const axisTop = (max, steps = [1, 2, 2.5, 5, 10]) => {
+  const raw = Math.max(max, 1) / 4; const mag = 10 ** Math.floor(Math.log10(raw));
+  return 4 * Math.max(1, steps.find((m) => m * mag >= raw) * mag);
+};
+const shortInr = (n) => (n >= 10000000 ? `₹${+(n / 10000000).toFixed(2)}Cr` : n >= 100000 ? `₹${+(n / 100000).toFixed(2)}L` : n >= 1000 ? `₹${+(n / 1000).toFixed(1)}K` : `₹${n}`);
+
 function WeeklyRevenue() {
   const ready = useContext(Ready); const wrap = useRef(null); const [hi, setHi] = useState(null);
-  const W = 720, H = 250, pl = 40, pr = 30, pt = 14, pb = 30, n = WEEK.days.length, mx = 800;
+  const { data: wk } = useWeeklyRevenue();
+  const { data: td, loading: tdLoading } = useTodayHighlights();
+  const TODAY = [
+    [ShoppingCart, 'New Orders', `${td.orders}`, '--w-orange'], [IndianRupee, 'Revenue', shortInr(td.revenue), '--w-green'],
+    [Truck, 'Deliveries', `${td.deliveries} done`, '--w-blue'], [UserPlus, 'New Customers', `${td.customers} joined`, '--w-purple'],
+  ].map(([Ic, label, value, c]) => [Ic, label, tdLoading ? '…' : value, c]);
+  const days = wk.days.map((d) => d.toLocaleDateString('en-US', { weekday: 'short' }));
+  const W = 720, H = 250, pl = 56, pr = 40, pt = 14, pb = 30, n = days.length;
+  const topR = axisTop(Math.max(...wk.rev)); const topO = axisTop(Math.max(...wk.ord), [1, 2, 5, 10]);
   const X = (i) => pl + (i * (W - pl - pr)) / (n - 1);
-  const Y = (val) => pt + (1 - val / mx) * (H - pt - pb);
-  const pr_ = WEEK.rev.map((val, i) => [X(i), Y(val)]); const po_ = WEEK.ord.map((val, i) => [X(i), Y(val)]);
+  const Y = (val, top) => pt + (1 - val / top) * (H - pt - pb);
+  const pr_ = wk.rev.map((val, i) => [X(i), Y(val, topR)]); const po_ = wk.ord.map((val, i) => [X(i), Y(val, topO)]);
   const dr = smooth(pr_); const dor = smooth(po_);
+  const dataKey = `${wk.rev.join(',')}|${wk.ord.join(',')}`;
   useLayoutEffect(() => {
     if (!ready) return undefined;
     const c = gsap.context(() => {
       const tl = gsap.timeline({ defaults: { ease: 'power3.out' }, delay: 0.45 });
       tl.from('.wm-h', { opacity: 0, y: -14, duration: 0.5 }, 0)
         .from('.chart-wrap', { opacity: 0, y: 16, duration: 0.6 }, 0.1)
-        .fromTo('.wl', { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 1.4, stagger: 0.15, ease: 'power2.inOut' }, 0.3)
-        .fromTo('.wa', { opacity: 0 }, { opacity: 1, duration: 1 }, 0.9)
-        .fromTo('.wdot', { scale: 0, transformOrigin: '50% 50%' }, { scale: 1, duration: 0.4, stagger: 0.05, ease: 'back.out(2)', clearProps: 'transform' }, 1.1)
         .from('.wm-legend span', { opacity: 0, y: 8, duration: 0.4, stagger: 0.1 }, 1.2)
         .from('.wm-sec', { opacity: 0, x: -10, duration: 0.5 }, 1)
         .from('.wm-t', { opacity: 0, y: 16, scale: 0.94, duration: 0.5, stagger: 0.08, clearProps: 'opacity,transform' }, 1.1);
     }, wrap);
     return () => c.revert();
   }, [ready]);
+  // lines: redraw when live data arrives
+  useLayoutEffect(() => {
+    if (!ready) return undefined;
+    const c = gsap.context(() => {
+      const tl = gsap.timeline({ defaults: { ease: 'power3.out' }, delay: 0.75 });
+      tl.fromTo('.wl', { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 1.4, stagger: 0.15, ease: 'power2.inOut' }, 0)
+        .fromTo('.wa', { opacity: 0 }, { opacity: 1, duration: 1 }, 0.6)
+        .fromTo('.wdot', { scale: 0, transformOrigin: '50% 50%' }, { scale: 1, duration: 0.4, stagger: 0.05, ease: 'back.out(2)', clearProps: 'transform' }, 0.8);
+    }, wrap);
+    return () => c.revert();
+  }, [ready, dataKey]);
   const onMove = (e) => {
     const b = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - b.left) / b.width) * W;
@@ -547,27 +561,31 @@ function WeeklyRevenue() {
               <linearGradient id="wgr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style={{ stopColor: v('--w-orange'), stopOpacity: 0.22 }} /><stop offset="1" style={{ stopColor: v('--w-orange'), stopOpacity: 0 }} /></linearGradient>
               <linearGradient id="wgo" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style={{ stopColor: v('--w-olive'), stopOpacity: 0.28 }} /><stop offset="1" style={{ stopColor: v('--w-olive'), stopOpacity: 0 }} /></linearGradient>
             </defs>
-            {[0, 200, 400, 600, 800].map((t) => (
-              <g key={t}><line x1={pl} x2={W - pr} y1={Y(t)} y2={Y(t)} style={{ stroke: v('--w-line') }} strokeDasharray="3 5" /><text className="axis" x={pl - 10} y={Y(t) + 4} textAnchor="end">{t}</text></g>
+            {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+              <g key={t}>
+                <line x1={pl} x2={W - pr} y1={Y(t, 1)} y2={Y(t, 1)} style={{ stroke: v('--w-line') }} strokeDasharray="3 5" />
+                <text className="axis" x={pl - 10} y={Y(t, 1) + 4} textAnchor="end" style={{ fill: v('--w-orange') }}>{t ? shortInr(topR * t) : '₹0'}</text>
+                <text className="axis" x={W - pr + 10} y={Y(t, 1) + 4} textAnchor="start" style={{ fill: v('--w-olive') }}>{topO * t}</text>
+              </g>
             ))}
-            {WEEK.days.map((d, i) => <text key={d} className="axis" x={X(i)} y={H - 8} textAnchor="middle" style={{ fill: hi === i ? v('--w-ink') : undefined }}>{d}</text>)}
+            {days.map((d, i) => <text key={i} className="axis" x={X(i)} y={H - 8} textAnchor="middle" style={{ fill: hi === i ? v('--w-ink') : undefined }}>{i === n - 1 ? 'Today' : d}</text>)}
             {hi !== null && <line x1={X(hi)} x2={X(hi)} y1={pt} y2={H - pb} style={{ stroke: v('--w-tan') }} strokeDasharray="3 3" />}
-            <path className="wa" d={`${dr}L${X(n - 1)},${Y(0)}L${X(0)},${Y(0)}Z`} fill="url(#wgr)" />
-            <path className="wa" d={`${dor}L${X(n - 1)},${Y(0)}L${X(0)},${Y(0)}Z`} fill="url(#wgo)" />
+            <path className="wa" d={`${dr}L${X(n - 1)},${Y(0, 1)}L${X(0)},${Y(0, 1)}Z`} fill="url(#wgr)" />
+            <path className="wa" d={`${dor}L${X(n - 1)},${Y(0, 1)}L${X(0)},${Y(0, 1)}Z`} fill="url(#wgo)" />
             <path className="wl" d={dr} pathLength="1" fill="none" strokeWidth="3" strokeLinecap="round" style={{ stroke: v('--w-orange'), strokeDasharray: 1, strokeDashoffset: 1 }} />
             <path className="wl" d={dor} pathLength="1" fill="none" strokeWidth="3" strokeLinecap="round" style={{ stroke: v('--w-olive'), strokeDasharray: 1, strokeDashoffset: 1 }} />
             {dots(po_, '--w-olive')}{dots(pr_, '--w-orange')}
           </svg>
           {hi !== null && (
             <div className="tip wm-tip" style={tipPos}>
-              <b>{WEEK.days[hi]}</b>
-              <div style={{ color: v('--w-olive') }}>Orders : {WEEK.ord[hi]} orders</div>
-              <div style={{ color: v('--w-orange') }}>Revenue : ₹{WEEK.rev[hi]}K</div>
+              <b>{wk.days[hi].toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' })}</b>
+              <div style={{ color: v('--w-olive') }}>Orders : {wk.ord[hi]} order{wk.ord[hi] === 1 ? '' : 's'}</div>
+              <div style={{ color: v('--w-orange') }}>Revenue : ₹{wk.rev[hi].toLocaleString('en-IN')}</div>
             </div>
           )}
         </div>
 
-        <div className="wm-legend"><span><i style={{ background: v('--w-orange') }} />Revenue (₹K)</span><span><i style={{ background: v('--w-olive') }} />Orders</span></div>
+        <div className="wm-legend"><span><i style={{ background: v('--w-orange') }} />Revenue (₹)</span><span><i style={{ background: v('--w-olive') }} />Orders</span></div>
 
         <div className="wm-sec"><Sun size={16} strokeWidth={2.2} />Today's Highlights</div>
         <div className="wm-tiles">

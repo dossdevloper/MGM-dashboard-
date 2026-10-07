@@ -12,6 +12,7 @@ export const SALES_ORDER = {
   report: 'All_Sales_Orders',
   fields: {
     orderNo: 'Sales_order_no',
+    date: 'SO_date',        // date field, used for the weekly orders chart
     status: 'Status',          // dropdown field holding the order status
   },
   // Status values exactly as they appear in the Status dropdown -> card label + colour
@@ -61,6 +62,16 @@ export const INVOICES = {
   recent: 5,                   // how many recent invoices to list
 };
 
+// Today's Highlights: "Deliveries" = dispatches dated today, "New Customers" = customers added today
+export const DISPATCHES = {
+  report: 'All_Daily_Dispatches',
+  fields: { date: 'Dispatch_Date' },
+};
+export const CUSTOMERS = {
+  report: 'All_Customers',
+  fields: { date: 'Added_Time' },  // Creator's built-in created time (must be shown in the report)
+};
+
 // Shown when running outside Zoho Creator (local `npm run dev`)
 const SAMPLE_SO_COUNTS = { Draft: 96, Confirmed: 214, Shipped: 132, Cancelled: 38, Completed: 405 };
 const SAMPLE_PAYMENTS = {
@@ -86,6 +97,8 @@ const SAMPLE_INVOICES = {
     ['INV-000450', 'Cancelled', 'Ocean Foods Pvt Ltd', '09-Oct-2026', 8700],
   ],
 };
+const SAMPLE_WEEK_REV = [320000, 410000, 255000, 510000, 703000, 610000, 335000];
+const SAMPLE_WEEK_ORD = [90, 115, 72, 144, 201, 176, 95];
 
 /* ============ SDK helpers ============ */
 const sdk = () => (typeof window !== 'undefined' ? window.ZOHO?.CREATOR : undefined);
@@ -106,8 +119,18 @@ export function waitForSdk(timeout = 6000) {
 let initPromise;
 const initSdk = () => (initPromise ??= sdk().init());
 
-// Fetch every record of a report, 200 per page (the SDK maximum)
-export async function getAllRecords(reportName, criteria = '') {
+// Fetch every record of a report, 200 per page (the SDK maximum).
+// Cached per report, so cards that read the same report share one fetch.
+const recordCache = new Map();
+export function getAllRecords(reportName, criteria = '') {
+  const key = `${reportName}|${criteria}`;
+  if (!recordCache.has(key)) {
+    recordCache.set(key, fetchAllRecords(reportName, criteria).catch((e) => { recordCache.delete(key); throw e; }));
+  }
+  return recordCache.get(key);
+}
+
+async function fetchAllRecords(reportName, criteria) {
   await initSdk();
   const out = []; const pageSize = 200;
   for (let page = 1; ; page++) {
@@ -277,4 +300,54 @@ export function useInvoices() {
       .map(({ r, amt, st }) => [String(valueOf(r[fields.invoiceNo])), st, String(valueOf(r[fields.customer])), String(valueOf(r[fields.dueDate])), Math.round(amt)]);
     return { stats, status, recent };
   }, SAMPLE_INVOICES, EMPTY_INVOICES);
+}
+
+/* ============ Weekly Revenue & Orders ============
+   Last 7 days ending today (oldest first).
+   { days: [Date x7], rev: [₹ invoiced per day, cancelled excluded], ord: [sales orders per day] } */
+const lastWeek = () => {
+  const now = new Date();
+  return Array.from({ length: 7 }, (_, i) => new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6 + i));
+};
+const dayIndex = (days, d) => (d ? days.findIndex((x) => +x === +d) : -1);
+
+export function useWeeklyRevenue() {
+  const rev = useZohoReport(INVOICES.report, (records) => {
+    const { fields } = INVOICES; const days = lastWeek(); const out = Array(7).fill(0);
+    records.forEach((r) => {
+      if (String(valueOf(r[fields.status])).trim().toLowerCase() === 'cancelled') return;
+      const i = dayIndex(days, toDate(r[fields.date]));
+      if (i >= 0) out[i] += toNumber(r[fields.amount]);
+    });
+    return out.map(Math.round);
+  }, SAMPLE_WEEK_REV, Array(7).fill(0));
+
+  const ord = useZohoReport(SALES_ORDER.report, (records) => {
+    const { fields } = SALES_ORDER; const days = lastWeek(); const out = Array(7).fill(0);
+    records.forEach((r) => {
+      if (!valueOf(r[fields.orderNo])) return;
+      const i = dayIndex(days, toDate(r[fields.date]));
+      if (i >= 0) out[i] += 1;
+    });
+    return out;
+  }, SAMPLE_WEEK_ORD, Array(7).fill(0));
+
+  return { data: { days: lastWeek(), rev: rev.data, ord: ord.data }, loading: rev.loading || ord.loading };
+}
+
+/* ============ Today's Highlights ============
+   { orders, revenue, deliveries, customers } for today */
+const countToday = (cfg) => (records) => {
+  const now = new Date(); const today = +new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return records.filter((r) => +toDate(r[cfg.fields.date]) === today).length;
+};
+
+export function useTodayHighlights() {
+  const wk = useWeeklyRevenue();
+  const del = useZohoReport(DISPATCHES.report, countToday(DISPATCHES), 18, 0);
+  const cus = useZohoReport(CUSTOMERS.report, countToday(CUSTOMERS), 7, 0);
+  return {
+    data: { orders: wk.data.ord[6], revenue: wk.data.rev[6], deliveries: del.data, customers: cus.data },
+    loading: wk.loading || del.loading || cus.loading,
+  };
 }
