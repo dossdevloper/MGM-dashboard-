@@ -78,9 +78,9 @@ export const FLOW = [
   { key: 'quote', report: 'All_Quotations', date: 'Quotation_Date', unit: ['quotation', 'quotations'] },
   { key: 'order', report: 'All_Sales_Orders', date: 'SO_date', unit: ['sales order', 'sales orders'] },
   { key: 'stock', report: 'All_Stock_Transfers', date: 'Transfer_Date', unit: ['stock transfer', 'stock transfers'] },
-  { key: 'assign', report: 'All_Packing_Assignments', date: 'Assignment_Date', unit: ['assignment', 'assignments'] },
+  { key: 'assign', report: 'Packing_Assignments', date: 'Assignment_Date', unit: ['assignment', 'assignments'] },
   { key: 'weigh', report: 'Daily_Weight_Checking_Report', date: 'Date_field', unit: ['weight check', 'weight checks'] },
-  { key: 'pack', report: 'All_Packing_Lists', date: 'Packing_Date', unit: ['packing list', 'packing lists'] },
+  { key: 'pack', report: 'Packages', date: 'Packing_Date', unit: ['packing list', 'packing lists'] },
   { key: 'ship', report: 'All_Shipments', date: 'Shipment_Date', unit: ['shipment', 'shipments'] },
 ];
 
@@ -439,4 +439,182 @@ export function useTodayHighlights() {
     data: { orders: wk.data.ord[6], revenue: wk.data.rev[6], deliveries: del.data, customers: cus.data },
     loading: wk.loading || del.loading || cus.loading,
   };
+}
+
+/* ============ multi-report loader ============
+   Like useZohoReport, but loads several reports and calls compute(recordsA, recordsB, ...).
+   A report that fails to load is passed as null, so the others still show. */
+export function useZohoReports(reports, compute, sample, empty) {
+  const [state, setState] = useState({ data: empty, loading: true, error: null, live: false });
+  const key = reports.join('|');
+  useEffect(() => {
+    let alive = true;
+    waitForSdk().then((ok) => {
+      if (!alive) return null;
+      if (!ok) { setState({ data: sample, loading: false, error: null, live: false }); return null; }
+      return Promise.allSettled(reports.map((r) => getAllRecords(r))).then((res) => {
+        if (!alive) return;
+        const recs = res.map((x) => (x.status === 'fulfilled' ? x.value : null));
+        try {
+          setState({ data: compute(...recs), loading: false, error: recs.every((x) => x === null) ? new Error(`${key} failed`) : null, live: true });
+        } catch (e) {
+          console.error(`${key} compute failed`, e);
+          setState((s) => ({ ...s, loading: false, error: e }));
+        }
+      });
+    });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return state;
+}
+const lower = (v) => String(valueOf(v)).trim().toLowerCase();
+const DAY = 864e5;
+
+/* ============ Receivables (cash radar) ============
+   Worked out from the invoices themselves (payments are not linked to invoices):
+   invoiced  = non-draft, non-cancelled invoices dated this FY
+   balance   = the invoice's own balance field if it has one (e.g. Balance_Due), else
+               0 for Paid and the full total for every other open status
+   collected = invoiced - balance of this FY's invoices; rate = collected / invoiced
+   aging (every open invoice, by its Due_Date): [not due yet, due today, 1-30, 31-60, 60+ days late] */
+const BALANCE_KEY = /^(balance(_due|_amount)?|amount_due|due_amount|outstanding(_amount)?|pending_amount)$/i;
+const EMPTY_RECV = { invoiced: 0, collected: 0, outstanding: 0, rate: 0, open: 0, openN: 0, overdue: 0, overdueN: 0, dueToday: 0, dueTodayN: 0, aging: [0, 0, 0, 0, 0], agingN: [0, 0, 0, 0, 0], worst: null };
+export function useReceivables() {
+  return useZohoReports([INVOICES.report], (invs) => {
+    const p = periodStarts(); const F = INVOICES.fields;
+    const o = { ...EMPTY_RECV, aging: [0, 0, 0, 0, 0], agingN: [0, 0, 0, 0, 0] };
+    const balKey = invs?.length ? Object.keys(invs[0]).find((k) => BALANCE_KEY.test(k)) : undefined;
+    let fyBalance = 0;
+    (invs || []).forEach((r) => {
+      const st = lower(r[F.status]); if (st === 'cancelled' || st === 'draft') return;
+      const d = toDate(r[F.date]); const amt = toNumber(r[F.amount]);
+      const bal = st === 'paid' ? 0 : Math.max(0, Math.min(amt, balKey ? toNumber(r[balKey]) : amt));
+      const inFy = d && d >= p.year && d <= p.today;
+      if (inFy) { o.invoiced += amt; fyBalance += bal; }
+      if (bal <= 0) return;
+      o.open += bal; o.openN += 1;
+      const due = toDate(r[F.dueDate]) || d;
+      const late = due ? Math.round((p.today - due) / DAY) : -1;
+      const b = late < 0 ? 0 : late === 0 ? 1 : late <= 30 ? 2 : late <= 60 ? 3 : 4;
+      o.aging[b] += bal; o.agingN[b] += 1;
+      if (late === 0) { o.dueToday += bal; o.dueTodayN += 1; }
+      if (late > 0) {
+        o.overdue += bal; o.overdueN += 1;
+        if (!o.worst || late > o.worst.days) o.worst = { days: late, no: String(valueOf(r[F.invoiceNo])), customer: String(valueOf(r[F.customer])), amt: Math.round(bal) };
+      }
+    });
+    o.outstanding = o.open;
+    o.collected = Math.max(0, o.invoiced - fyBalance);
+    o.rate = o.invoiced ? Math.min(100, (o.collected / o.invoiced) * 100) : 0;
+    ['invoiced', 'collected', 'outstanding', 'open', 'overdue', 'dueToday'].forEach((k) => { o[k] = Math.round(o[k]); });
+    o.aging = o.aging.map(Math.round);
+    return o;
+  }, {
+    invoiced: 1948400, collected: 1462200, outstanding: 486200, rate: 75, open: 486200, openN: 18, overdue: 195300, overdueN: 7, dueToday: 18400, dueTodayN: 2,
+    aging: [272500, 18400, 118400, 56300, 20600], agingN: [9, 2, 3, 2, 2], worst: { days: 74, no: 'INV-000391', customer: 'Ocean Foods Pvt Ltd', amt: 14400 },
+  }, EMPTY_RECV);
+}
+
+/* ============ Top customers ============
+   current FY, from invoices (non-draft, non-cancelled): billed = total, due = unpaid balance
+   (same balance rule as the cash radar), paid = billed - due */
+export function useTopCustomers(limit = 6) {
+  return useZohoReports([INVOICES.report], (invs) => {
+    const p = periodStarts(); const F = INVOICES.fields; const m = new Map();
+    const balKey = invs?.length ? Object.keys(invs[0]).find((k) => BALANCE_KEY.test(k)) : undefined;
+    (invs || []).forEach((r) => {
+      const st = lower(r[F.status]); if (st === 'cancelled' || st === 'draft') return;
+      const d = toDate(r[F.date]); if (!d || d < p.year || d > p.today) return;
+      const name = String(valueOf(r[F.customer])).trim(); if (!name) return;
+      const amt = toNumber(r[F.amount]);
+      const bal = st === 'paid' ? 0 : Math.max(0, Math.min(amt, balKey ? toNumber(r[balKey]) : amt));
+      if (!m.has(name)) m.set(name, { name, billed: 0, due: 0, n: 0 });
+      const c = m.get(name); c.billed += amt; c.due += bal; c.n += 1;
+    });
+    const all = [...m.values()].map((c) => ({ ...c, billed: Math.round(c.billed), due: Math.round(c.due), paid: Math.round(c.billed - c.due) }));
+    const sum = (k) => all.reduce((s, c) => s + c[k], 0);
+    return { total: sum('billed'), paid: sum('paid'), due: sum('due'), count: all.length, rows: all.sort((a, b) => b.billed - a.billed).slice(0, limit) };
+  }, {
+    total: 1948400, paid: 1562500, due: 385900, count: 24, rows: [
+      { name: 'Sri Balaji Agencies', billed: 412300, paid: 380000, due: 32300, n: 9 }, { name: 'Kovai Distributors', billed: 318900, paid: 240500, due: 78400, n: 7 },
+      { name: 'Madurai Cold Chain', billed: 276400, paid: 276400, due: 0, n: 6 }, { name: 'Nilgiri Traders', billed: 198200, paid: 120000, due: 78200, n: 5 },
+      { name: 'Ocean Foods Pvt Ltd', billed: 154700, paid: 98300, due: 56400, n: 4 }, { name: 'Metro Retail Hub', billed: 121500, paid: 121500, due: 0, n: 3 },
+    ],
+  }, { total: 0, paid: 0, due: 0, count: 0, rows: [] });
+}
+
+/* ============ Sales funnel ============
+   quotations > sales orders > invoices > paid invoices, per period (month / year) */
+const zf = () => ({ month: 0, year: 0 });
+export function useSalesFunnel() {
+  const quote = FLOW.find((f) => f.key === 'quote');
+  return useZohoReports([quote.report, SALES_ORDER.report, INVOICES.report], (qs, sos, invs) => {
+    const p = periodStarts(); const out = { quote: zf(), order: zf(), invoice: zf(), paid: zf(), value: zf(), paidValue: zf() };
+    const add = (k, d, n = 1) => ['month', 'year'].forEach((x) => { if (d && d >= p[x] && d <= p.today) out[k][x] += n; });
+    (qs || []).forEach((r) => add('quote', dateOf(r, quote.date)));
+    (sos || []).forEach((r) => { if (lower(r[SALES_ORDER.fields.status]) !== 'cancelled' && valueOf(r[SALES_ORDER.fields.orderNo])) add('order', dateOf(r, SALES_ORDER.fields.date)); });
+    (invs || []).forEach((r) => {
+      const st = lower(r[INVOICES.fields.status]); if (st === 'cancelled' || st === 'draft') return;
+      const d = toDate(r[INVOICES.fields.date]); const amt = toNumber(r[INVOICES.fields.amount]);
+      add('invoice', d); add('value', d, amt);
+      if (st === 'paid') { add('paid', d); add('paidValue', d, amt); }
+    });
+    out.missing = { quote: qs === null, order: sos === null, invoice: invs === null };
+    return out;
+  }, {
+    quote: { month: 48, year: 342 }, order: { month: 37, year: 270 }, invoice: { month: 31, year: 236 }, paid: { month: 22, year: 189 },
+    value: { month: 411400, year: 1948400 }, paidValue: { month: 288000, year: 1543900 }, missing: {},
+  }, { quote: zf(), order: zf(), invoice: zf(), paid: zf(), value: zf(), paidValue: zf(), missing: {} });
+}
+
+/* ============ Business pulse ============
+   activity per calendar day: { days: { 'y-m-d': { so, inv, pay } }, first: Date of the earliest record } */
+export const dayKey = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+function seeded(s) { return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; }; }
+const samplePulse = () => {
+  const r = seeded(7); const days = {}; const t = periodStarts().today; let first = t;
+  for (let i = 0; i < 150; i++) {
+    const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() - i); if (d.getDay() === 0) continue;
+    days[dayKey(d)] = { so: Math.floor(r() * 5), inv: Math.floor(r() * 4), pay: Math.floor(r() * 3) }; first = d;
+  }
+  return { days, first };
+};
+export function useBusinessPulse() {
+  return useZohoReports([SALES_ORDER.report, INVOICES.report, PAYMENTS.report], (sos, invs, pays) => {
+    const days = {}; let first = null;
+    const put = (d, k) => {
+      if (!d) return; const x = (days[dayKey(d)] ??= { so: 0, inv: 0, pay: 0 }); x[k] += 1;
+      if (!first || d < first) first = d;
+    };
+    (sos || []).forEach((r) => put(dateOf(r, SALES_ORDER.fields.date), 'so'));
+    (invs || []).forEach((r) => { if (lower(r[INVOICES.fields.status]) !== 'cancelled') put(toDate(r[INVOICES.fields.date]), 'inv'); });
+    (pays || []).forEach((r) => put(toDate(r[PAYMENTS.fields.date]), 'pay'));
+    return { days, first };
+  }, samplePulse(), { days: {}, first: null });
+}
+
+/* ============ Master records ============
+   total records per master report + how many were added this month (Creator's Added_Time) */
+export const MASTERS = [
+  { key: 'cust', label: 'Customers', report: 'All_Customers' },
+  { key: 'prod', label: 'Products', report: 'All_Products' },
+  { key: 'emp', label: 'Employees', report: 'All_Employees' },
+  { key: 'vend', label: 'Vendors', report: 'All_Vendors' },
+  { key: 'veh', label: 'Vehicles', report: 'All_Vehicles' },
+  { key: 'trans', label: 'Transports', report: 'All_Transports' },
+];
+export function useMasterCounts() {
+  return useZohoReports(MASTERS.map((m) => m.report), (...lists) => {
+    const p = periodStarts();
+    return Object.fromEntries(MASTERS.map((m, i) => {
+      const l = lists[i];
+      if (!l) return [m.key, null];
+      const dated = l.filter((r) => r.Added_Time !== undefined);
+      return [m.key, { total: l.length, added: dated.length ? dated.filter((r) => { const d = toDate(r.Added_Time); return d && d >= p.month; }).length : null }];
+    }));
+  }, {
+    cust: { total: 248, added: 7 }, prod: { total: 64, added: 2 }, emp: { total: 78, added: 3 },
+    vend: { total: 37, added: 1 }, veh: { total: 22, added: 0 }, trans: { total: 15, added: 1 },
+  }, Object.fromEntries(MASTERS.map((m) => [m.key, { total: 0, added: null }])));
 }

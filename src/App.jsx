@@ -4,9 +4,10 @@ import {
   Users, Contact, Store, MapPin, Truck, Package, FileText, ShoppingCart, Repeat, Scale, Send,
   Droplets, MapPinned, CarFront, Boxes, Layers, Barcode, ListChecks, Tag, Ruler, ClipboardList,
   Search, Sun, Moon, Upload, Plus, ArrowUpRight, TrendingUp, TrendingDown, IndianRupee, UserPlus,CheckCircle2, XCircle, Clock3, PencilLine, BarChart3,Wallet,CalendarClock, Pause, Play,
+  Activity, Crown, TriangleAlert, ShieldCheck, Database, Zap, Flame, ReceiptText, Radar, Filter, ChevronLeft, ChevronRight, ChevronDown, CalendarDays,
 } from 'lucide-react';
 import './App.css';
-import { useSalesOrderStatus, usePayments, PAYMENTS, useInvoices, useWeeklyRevenue, useTodayHighlights, useFactoryFlow, DISPATCHES, INVOICES as INV_CFG } from './zoho.jsx';
+import { useSalesOrderStatus, usePayments, PAYMENTS, useInvoices, useWeeklyRevenue, useTodayHighlights, useFactoryFlow, DISPATCHES, useReceivables, useTopCustomers, useSalesFunnel, useBusinessPulse, dayKey, useMasterCounts, MASTERS, INVOICES as INV_CFG } from './zoho.jsx';
 
 // import './Loader_snippet.jsx';
 
@@ -38,16 +39,7 @@ const KPIS = [
   { label: 'Dispatched Today', icon: Truck, value: 4.2, dec: 1, suffix: ' MT', delta: 8.2, spark: [12, 18, 15, 22, 20, 27, 25, 31, 34, 38], c: '--leaf' },
   { label: 'Weight Variance', icon: Scale, value: 0.82, dec: 2, suffix: '%', delta: -0.14, goodDown: true, spark: [30, 28, 31, 26, 27, 22, 24, 20, 19, 17], c: '--volt' },
 ];
-const PIPE = [{ label: 'Quotations', v: 342, c: '--chilli' }, { label: 'Sales Orders', v: 518, c: '--gold' }, { label: 'Loading', v: 96, c: '--toast' }, { label: 'Dispatched', v: 214, c: '--leaf' }];
 // important modules: master = gold, transactions = chilli, dispatch = leaf
-const MODS = [
-  ['Sales Orders', 518, '--chilli', 'All_Sales_Orders'], ['Quotations', 342, '--chilli', 'All_Quotations'], ['Customers', 248, '--gold', 'All_Customers'],
-  ['Daily Dispatches', 214, '--leaf', 'All_Daily_Dispatches'], ['Weight Checks', 198, '--leaf', 'Daily_Weight_Checking_Report'], ['Stock Transfers', 156, '--chilli', 'All_Stock_Transfers'],
-  ['Employees', 78, '--gold', 'All_Employees'], ['Products', 64, '--gold', 'All_Products'], ['Vendors', 37, '--gold', 'All_Vendors'],
-];
-const BRANDS = [['Take It', 34], ['Velam', 27], ['Bells', 19], ['Lakshmi', 13], ['Maharaja', 7]];
-const WEIGHT = [['M', 0.6], ['T', 0.9], ['W', 0.7], ['T', 1.1], ['F', 0.8], ['S', 0.5], ['M', 1.3], ['T', 0.9], ['W', 0.7], ['T', 0.82]];
-const UNITS = [['Unit A', 92, '--gold'], ['Unit B', 78, '--chilli'], ['Unit C', 64, '--leaf']];
 const ROWS = [
   ['DSP-2041', 'Sri Balaji Agencies', 'TN 09 AX 4821', 'Plain Appalam · 1kg', 2.4, 'dispatched', '#D92B26'],
   ['DSP-2040', 'Kovai Distributors', 'TN 38 BC 1172', 'Kerala Pappadam · 500g', 3.1, 'loading', '#12A150'],
@@ -79,8 +71,6 @@ function rng(s) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-const series = (n, seed, base, amp) => { const r = rng(seed); return Array.from({ length: n }, (_, i) => Math.max(4, Math.round(base + amp * Math.sin(i / 2.3 + seed) + (r() - 0.5) * amp * 0.9 + i * 0.4))); };
-const dayLabels = (n) => Array.from({ length: n }, (_, i) => { const x = new Date(); x.setDate(x.getDate() - (n - 1 - i)); return x.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); });
 
 /* ============ Loader: centred logo, then two doors open to the sides ============ */
 const MSGS = ['Mixing the dough', 'Rolling thin appalams', 'Sun-drying the batch', 'Weighing & checking', 'Packing the cartons', 'Opening the gates'];
@@ -197,209 +187,6 @@ function Kpi({ k, i }) {
     </Card>
   );
 }
-
-function AreaChart() {
-  const ready = useContext(Ready);
-  const [range, setRange] = useState('14D'); const [hi, setHi] = useState(null); const wrap = useRef(null);
-  const n = range === '7D' ? 7 : range === '14D' ? 14 : 30;
-  const W = 720, H = 270, pl = 38, pr = 10, pt = 14, pb = 28;
-  const data = useMemo(() => ({ lab: dayLabels(n), a: series(n, 7, 34, 9), b: series(n, 3, 48, 10) }), [n]);
-  const mx = Math.ceil(Math.max(...data.a, ...data.b) / 10) * 10 + 10;
-  const X = (i) => pl + (i * (W - pl - pr)) / (n - 1);
-  const Y = (val) => pt + (1 - val / mx) * (H - pt - pb);
-  const da = smooth(data.a.map((val, i) => [X(i), Y(val)])); const db = smooth(data.b.map((val, i) => [X(i), Y(val)]));
-  const step = Math.ceil(n / 6);
-  useLayoutEffect(() => {
-    if (!ready) return undefined;
-    const c = gsap.context(() => {
-      gsap.fromTo('.ln', { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 1.4, stagger: 0.15, ease: 'power2.inOut' });
-      gsap.fromTo('.ar', { opacity: 0 }, { opacity: 1, duration: 1, delay: 0.6 });
-    }, wrap);
-    return () => c.revert();
-  }, [ready, range]);
-  const onMove = (e) => {
-    const b = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - b.left) / b.width) * W;
-    setHi(Math.max(0, Math.min(n - 1, Math.round((x - pl) / ((W - pl - pr) / (n - 1))))));
-  };
-  const tipPos = hi === null ? {} : { left: `${(X(hi) / W) * 100}%`, transform: hi > n * 0.7 ? 'translateX(-105%)' : hi < n * 0.2 ? 'translateX(8px)' : 'translateX(-50%)' };
-  return (
-    <Card className="s8">
-      <div className="card-h">
-        <div><div className="card-t">Orders vs dispatch</div><div className="card-s">Daily volume across all locations</div></div>
-        <div className="row">
-          <div className="legend"><span><i style={{ background: v('--chilli') }} />Orders</span><span><i style={{ background: v('--gold') }} />Dispatched</span></div>
-          <Seg options={['7D', '14D', '30D']} value={range} onChange={setRange} />
-        </div>
-      </div>
-      <div className="chart-wrap" ref={wrap} onMouseLeave={() => setHi(null)}>
-        <svg className="chart" viewBox={`0 0 ${W} ${H}`} onMouseMove={onMove}>
-          <defs>
-            <linearGradient id="ga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style={{ stopColor: v('--gold'), stopOpacity: 0.45 }} /><stop offset="1" style={{ stopColor: v('--gold'), stopOpacity: 0 }} /></linearGradient>
-            <linearGradient id="gb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style={{ stopColor: v('--chilli'), stopOpacity: 0.25 }} /><stop offset="1" style={{ stopColor: v('--chilli'), stopOpacity: 0 }} /></linearGradient>
-          </defs>
-          {[0, 0.25, 0.5, 0.75, 1].map((t) => { const tv = Math.round(mx * t); return (
-            <g key={t}><line x1={pl} x2={W - pr} y1={Y(tv)} y2={Y(tv)} stroke="var(--soft)" strokeDasharray="2 6" /><text className="axis" x={pl - 8} y={Y(tv) + 3.5} textAnchor="end">{tv}</text></g>
-          ); })}
-          {data.lab.map((l, i) => (i % step === 0 ? <text key={i} className="axis" x={X(i)} y={H - 6} textAnchor="middle">{l}</text> : null))}
-          <path className="ar" d={`${db}L${X(n - 1)},${Y(0)}L${X(0)},${Y(0)}Z`} fill="url(#gb)" />
-          <path className="ar" d={`${da}L${X(n - 1)},${Y(0)}L${X(0)},${Y(0)}Z`} fill="url(#ga)" />
-          <path className="ln" d={db} pathLength="1" fill="none" strokeWidth="3" strokeLinecap="round" style={{ stroke: v('--chilli'), strokeDasharray: 1, strokeDashoffset: 1 }} />
-          <path className="ln" d={da} pathLength="1" fill="none" strokeWidth="3.4" strokeLinecap="round" style={{ stroke: v('--gold'), strokeDasharray: 1, strokeDashoffset: 1 }} />
-          {hi !== null && (
-            <g>
-              <line x1={X(hi)} x2={X(hi)} y1={pt} y2={H - pb} stroke="var(--muted)" strokeDasharray="3 3" />
-              <circle cx={X(hi)} cy={Y(data.a[hi])} r="5.5" style={{ fill: v('--gold'), stroke: v('--line'), strokeWidth: 2 }} />
-              <circle cx={X(hi)} cy={Y(data.b[hi])} r="5" style={{ fill: v('--chilli'), stroke: v('--line'), strokeWidth: 2 }} />
-            </g>
-          )}
-        </svg>
-        {hi !== null && (
-          <div className="tip" style={tipPos}>
-            <b>{data.lab[hi]}</b>
-            <div><i style={{ background: v('--chilli') }} />Orders <em>{data.b[hi]}</em></div>
-            <div><i style={{ background: v('--gold') }} />Dispatched <em>{data.a[hi]}</em></div>
-          </div>
-        )}
-      </div>
-    </Card>
-  );
-}
-
-/* donut: order pipeline */
-function Pipeline() {
-  const ready = useContext(Ready); const r = useRef(null); const [h, setH] = useState(null);
-  const R = 66, C = 2 * Math.PI * R; const total = PIPE.reduce((s, p) => s + p.v, 0);
-  let acc = 0;
-  const segs = PIPE.map((p) => { const len = (p.v / total) * C; const o = { ...p, len, off: acc }; acc += len; return o; });
-  useLayoutEffect(() => {
-    if (!ready) return undefined;
-    const c = gsap.context(() => {
-      segs.forEach((s, i) => gsap.fromTo(`.seg${i}`, { strokeDasharray: `0 ${C}` }, { strokeDasharray: `${Math.max(0, s.len - 5)} ${C}`, duration: 1.1, delay: 0.2 + i * 0.14, ease: 'power3.out' }));
-    }, r);
-    return () => c.revert();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready]);
-  return (
-    <Card className="s4">
-      <div className="card-h"><div><div className="card-t">Order pipeline</div><div className="card-s">Quotation to dispatch</div></div></div>
-      <div className="donut-w" ref={r}>
-        <div className="donut">
-          <svg viewBox="0 0 176 176" width="176" height="176">
-            <g transform="rotate(-90 88 88)">
-              <circle cx="88" cy="88" r={R} fill="none" stroke="var(--soft)" strokeWidth="16" />
-              {segs.map((s, i) => (
-                <circle key={i} className={`seg${i}`} cx="88" cy="88" r={R} fill="none" strokeWidth={h === i ? 20 : 16} strokeLinecap="round" strokeDashoffset={-s.off}
-                  style={{ stroke: v(s.c), strokeDasharray: `0 ${C}`, transition: 'stroke-width .25s', cursor: 'pointer' }}
-                  onMouseEnter={() => setH(i)} onMouseLeave={() => setH(null)} />
-              ))}
-            </g>
-          </svg>
-          <div className="donut-c"><b>{(h === null ? total : segs[h].v).toLocaleString('en-IN')}</b><span>{h === null ? 'Total' : segs[h].label}</span></div>
-        </div>
-        <div className="dl">
-          {segs.map((s, i) => (
-            <div key={i} className={`dl-i ${h === i ? 'on' : ''}`} onMouseEnter={() => setH(i)} onMouseLeave={() => setH(null)}>
-              <i style={{ background: v(s.c) }} />{s.label}<b>{s.v}</b>
-            </div>
-          ))}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-/* horizontal bars: the important modules, each bar opens its Zoho report */
-function ModuleBars() {
-  const ready = useContext(Ready); const r = useRef(null); const mx = MODS[0][1];
-  useLayoutEffect(() => {
-    if (!ready) return undefined;
-    const c = gsap.context(() => { gsap.fromTo('.hb-f', { scaleX: 0 }, { scaleX: 1, duration: 1.1, stagger: 0.07, ease: 'power3.out', delay: 0.2 }); }, r);
-    return () => c.revert();
-  }, [ready]);
-  return (
-    <Card className="s12">
-      <div className="card-h">
-        <div><div className="card-t">Records by module</div><div className="card-s">Click a bar to open the report in Zoho Creator</div></div>
-        <div className="legend"><span><i style={{ background: v('--gold') }} />Master</span><span><i style={{ background: v('--chilli') }} />Transactions</span><span><i style={{ background: v('--leaf') }} />Dispatch</span></div>
-      </div>
-      <div className="hbars" ref={r}>
-        {MODS.map(([name, val, c, link]) => (
-          <a key={name} className="hb" href={zoho(link)} target="_blank" rel="noopener noreferrer">
-            <span className="hb-n">{name}</span>
-            <span className="hb-t"><span className="hb-f" style={{ width: `${(val / mx) * 100}%`, background: v(c), '--bc': `color-mix(in srgb,${v(c)} 60%,transparent)` }} /></span>
-            <b className="hb-v">{val}</b>
-          </a>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-/* vertical bars with optional limit line */
-function VBars({ title, sub, data, limit, unit = '', colorFor, link }) {
-  const ready = useContext(Ready); const r = useRef(null);
-  const mx = Math.max(...data.map((d) => d[1]), limit || 0) * 1.15;
-  useLayoutEffect(() => {
-    if (!ready) return undefined;
-    const c = gsap.context(() => { gsap.fromTo('.vb-f', { scaleY: 0 }, { scaleY: 1, duration: 1, stagger: 0.06, ease: 'back.out(1.4)', delay: 0.2 }); }, r);
-    return () => c.revert();
-  }, [ready]);
-  return (
-    <Card className="s4">
-      <div className="card-h">
-        <div><div className="card-t">{title}</div><div className="card-s">{sub}</div></div>
-        {link && <a className="icon-btn sm" href={zoho(link)} target="_blank" rel="noopener noreferrer" aria-label="Open report"><ArrowUpRight size={16} /></a>}
-      </div>
-      <div className="vbars" ref={r}>
-        {limit && <div className="vb-lim" style={{ bottom: `calc(${(limit / mx) * 100}% + 22px)` }}><span>limit {limit}{unit}</span></div>}
-        {data.map(([l, val], i) => (
-          <div className="vb" key={i} title={`${l}: ${val}${unit}`}>
-            <b>{val}{unit}</b>
-            <div className="vb-t"><div className="vb-f" style={{ height: `${(val / mx) * 100}%`, background: v(colorFor ? colorFor(val, i) : '--gold') }} /></div>
-            <span>{l}</span>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-/* concentric rings: unit output vs daily target */
-function Rings() {
-  const ready = useContext(Ready); const r = useRef(null); const rad = [72, 53, 34];
-  const avg = Math.round(UNITS.reduce((s, u) => s + u[1], 0) / UNITS.length);
-  useLayoutEffect(() => {
-    if (!ready) return undefined;
-    const c = gsap.context(() => {
-      UNITS.forEach(([, p], i) => { const C = 2 * Math.PI * rad[i]; gsap.fromTo(`.rg${i}`, { strokeDasharray: `0 ${C}` }, { strokeDasharray: `${(C * p) / 100} ${C}`, duration: 1.3, delay: 0.2 + i * 0.15, ease: 'power3.out' }); });
-    }, r);
-    return () => c.revert();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready]);
-  return (
-    <Card className="s4">
-      <div className="card-h"><div><div className="card-t">Unit output</div><div className="card-s">Today vs daily target</div></div></div>
-      <div className="donut-w" ref={r}>
-        <div className="donut">
-          <svg viewBox="0 0 176 176" width="176" height="176">
-            <g transform="rotate(-90 88 88)">
-              {UNITS.map(([, , c], i) => (
-                <g key={i}>
-                  <circle cx="88" cy="88" r={rad[i]} fill="none" stroke="var(--soft)" strokeWidth="13" />
-                  <circle className={`rg${i}`} cx="88" cy="88" r={rad[i]} fill="none" strokeWidth="13" strokeLinecap="round" style={{ stroke: v(c), strokeDasharray: `0 ${2 * Math.PI * rad[i]}` }} />
-                </g>
-              ))}
-            </g>
-          </svg>
-          <div className="donut-c"><b>{avg}%</b><span>Average</span></div>
-        </div>
-        <div className="dl">{UNITS.map(([n, p, c]) => <div key={n} className="dl-i"><i style={{ background: v(c) }} />{n}<b>{p}%</b></div>)}</div>
-      </div>
-    </Card>
-  );
-}
-
 
 /* sales order status: donut + list + order health */
 function SalesStatus() {
@@ -1318,6 +1105,390 @@ const ctxRef = useRef(null);
   );
 }
 
+/* ============ Business intelligence (live, futuristic "console" cards) ============ */
+const rupee = (n) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+function FxHead({ kicker, title, live, loading, icon: Ic, children }) {
+  return (
+    <div className="fx-h">
+      <div className="fx-ht">
+        {Ic && <span className="fx-ico"><Ic size={18} strokeWidth={2.1} /></span>}
+        <div>
+          <h3 title={`${loading ? 'Syncing' : live ? 'Live' : 'Sample'} · ${kicker}`}>{title}</h3>
+        </div>
+      </div>
+      {children && <div className="fx-hr">{children}</div>}
+    </div>
+  );
+}
+
+/* HUD gauge: 270° segmented dial that lights up to the collection rate */
+const GSEG = 44; const G0 = 135; const GSPAN = 270;
+const polar = (r, deg) => [110 + r * Math.cos((deg * Math.PI) / 180), 110 + r * Math.sin((deg * Math.PI) / 180)];
+const arcPath = (r, a0, a1) => { const [x0, y0] = polar(r, a0); const [x1, y1] = polar(r, a1); return `M${x0},${y0} A${r},${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1},${y1}`; };
+function CashGauge({ rate, received, invoiced, loading }) {
+  const lit = Math.round((rate / 100) * (GSEG - 1));
+  const health = rate >= 80 ? ['Healthy', '--fx-green'] : rate >= 50 ? ['Watch', '--fx-gold'] : ['Critical', '--fx-red'];
+  const [mx, my] = polar(86.5, G0 + (GSPAN * rate) / 100);
+  return (
+    <div className="cg" style={{ '--hc': v(health[1]) }}>
+      <svg viewBox="0 0 220 220">
+        <defs>
+          <radialGradient id="cgDisc" cx="50%" cy="38%" r="65%"><stop offset="0" stopColor="var(--fx-disc-hi)" /><stop offset="1" stopColor="var(--fx-disc)" /></radialGradient>
+        </defs>
+        {/* outer HUD rings, counter-rotating */}
+        <g className="cg-spin"><path className="cg-hud" d={arcPath(104, 200, 290)} /><path className="cg-hud" d={arcPath(104, 20, 110)} /></g>
+        <g className="cg-spin rev"><circle className="cg-dash" cx="110" cy="110" r="99" /></g>
+        {/* scale ticks + labels */}
+        {Array.from({ length: 11 }, (_, i) => { const [x0, y0] = polar(70, G0 + i * 27); const [x1, y1] = polar(i % 5 ? 73 : 76, G0 + i * 27); return <line key={i} className="cg-tick" x1={x0} y1={y0} x2={x1} y2={y1} />; })}
+        {[[0, '0'], [100, '100']].map(([pc, t]) => { const [x, y] = polar(97, G0 + (GSPAN * pc) / 100 + (pc === 0 ? -9 : pc === 100 ? 9 : 0)); return <text key={t} className="cg-lbl" x={x} y={y + 3} textAnchor="middle">{t}</text>; })}
+        {/* segmented dial */}
+        {Array.from({ length: GSEG }, (_, i) => {
+          const deg = G0 + (i * GSPAN) / (GSEG - 1); const [x0, y0] = polar(80, deg); const [x1, y1] = polar(93, deg);
+          const on = !loading && rate > 0 && i <= lit; const t = i / (GSEG - 1);
+          return <line key={i} className={`cg-seg ${on ? 'on' : ''}`} x1={x0} y1={y0} x2={x1} y2={y1}
+            style={{ stroke: on ? `hsl(${190 - t * 45} 72% ${44 - t * 4}%)` : undefined, transitionDelay: `${i * 18}ms` }} />;
+        })}
+        {/* glass disc */}
+        <circle className="cg-disc" cx="110" cy="110" r="62" fill="url(#cgDisc)" />
+        <circle className="cg-ring" cx="110" cy="110" r="62" />
+        {/* live marker at the tip */}
+        {!loading && rate > 0 && <g transform={`translate(${mx},${my})`}><circle className="cg-pulse" r="7" /><circle className="cg-pin" r="5.5" /></g>}
+      </svg>
+      <div className="cg-sweep" />
+      <div className="cg-c">
+        <b>{loading ? '…' : <CountUp to={rate} dec={1} suffix="%" />}</b>
+        <span>Collected</span>
+      </div>
+      <div className="cg-f">{rupee(received)}<span>of</span>{rupee(invoiced)}</div>
+    </div>
+  );
+}
+
+/* cash radar: collection gauge + receivable aging */
+const AGING = [['Not due yet', '--fx-cyan'], ['Due today', '--fx-gold'], ['1–30 days late', '--fx-orange'], ['31–60 days late', '--fx-red'], ['60+ days late', '--fx-crimson']];
+function CashRadar() {
+  const { data: d, loading, live } = useReceivables();
+  const kpis = [
+    ['Invoiced', d.invoiced, '--fx-cyan', 100],
+    ['Collected', d.collected, '--fx-green', d.rate],
+    ['Outstanding', d.outstanding, '--fx-gold', d.invoiced ? Math.min(100, (d.outstanding / d.invoiced) * 100) : 0],
+  ];
+  return (
+    <Card className="s8 fx">
+      <FxHead kicker="FY receivables" title="Cash Flow Radar" icon={Radar} live={live} loading={loading}>
+        <a className="fx-link" href={zoho(INV_REPORT)} target="_blank" rel="noopener noreferrer">Invoices<ArrowUpRight size={14} /></a>
+      </FxHead>
+      <div className="cr-top">
+        <CashGauge rate={d.rate} received={d.collected} invoiced={d.invoiced} loading={loading} />
+        <div className="cr-kpis">
+          {kpis.map(([label, val, c, w]) => (
+            <div key={label} className="cr-kpi" style={{ '--c': v(c), '--w': `${Math.min(100, w)}%` }}>
+              <div className="cr-kl"><span>{label}</span><em>{label === 'Invoiced' ? 'this FY' : `${w.toFixed(1)}%`}</em></div>
+              <b>₹<CountUp to={val} /></b>
+              <div className="cr-kb"><i /></div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="cr-age">
+        <div className="cr-ah"><span>Open invoices by due date</span><b>{rupee(d.open)} · {d.openN} open</b></div>
+        <div className="cr-bar">
+          {AGING.map(([label, c], i) => d.aging[i] > 0 && (
+            <i key={label} style={{ flex: d.aging[i], background: v(c) }} title={`${label}: ${rupee(d.aging[i])}`} />
+          ))}
+          {!d.open && <i className="empty" />}
+        </div>
+        <div className="cr-leg">
+          {AGING.map(([label, c], i) => (
+            <div key={label} style={{ '--c': v(c) }} className={d.agingN[i] ? '' : 'zero'}>
+              <span><i />{label}</span><b>{shortInr(d.aging[i])}</b><small>{d.agingN[i]} inv</small>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {d.worst ? (
+        <a className="cr-alert" href={zoho(INV_REPORT)} target="_blank" rel="noopener noreferrer">
+          <span className="cr-ai"><TriangleAlert size={15} /></span>
+          <span><b>{d.overdueN} overdue · {rupee(d.overdue)}</b> — oldest is <b>{d.worst.no}</b> ({d.worst.customer}), {d.worst.days} days late, {rupee(d.worst.amt)}</span>
+          <ArrowUpRight size={14} />
+        </a>
+      ) : !loading && d.dueTodayN > 0 ? (
+        <a className="cr-alert warn" href={zoho(INV_REPORT)} target="_blank" rel="noopener noreferrer">
+          <span className="cr-ai"><CalendarClock size={15} /></span>
+          <span><b>{d.dueTodayN} invoice{d.dueTodayN === 1 ? '' : 's'} due today · {rupee(d.dueToday)}</b> — follow up before they turn overdue.</span>
+          <ArrowUpRight size={14} />
+        </a>
+      ) : !loading && (
+        <div className="cr-alert ok"><span className="cr-ai"><ShieldCheck size={15} /></span><span><b>No overdue invoices</b> — every open invoice is before its due date.</span></div>
+      )}
+    </Card>
+  );
+}
+
+/* sales funnel: quotation > order > invoice > paid */
+function SalesFunnel() {
+  const [per, setPer] = useState('This year');
+  const { data: d, loading, live } = useSalesFunnel(); const k = per === 'This year' ? 'year' : 'month';
+  const stages = [
+    ['Quotations', d.quote[k], FileText, '--fx-violet', d.missing.quote],
+    ['Sales orders', d.order[k], ShoppingCart, '--fx-cyan', d.missing.order],
+    ['Invoices', d.invoice[k], ReceiptText, '--fx-gold', d.missing.invoice],
+    ['Paid', d.paid[k], CheckCircle2, '--fx-green', d.missing.invoice],
+  ];
+  const max = Math.max(1, ...stages.map((s) => s[1]));
+  const win = d.quote[k] ? (d.paid[k] / d.quote[k]) * 100 : 0;
+  return (
+    <Card className="s4 fx">
+      <FxHead kicker="Conversion" title="Sales Funnel" icon={Filter} live={live} loading={loading}>
+        <Seg options={['This month', 'This year']} value={per} onChange={setPer} />
+      </FxHead>
+      <div className="fn">
+        {stages.map(([label, n, Ic, c, miss], i) => {
+          const next = stages[i + 1]; const conv = next && n ? Math.min(100, (next[1] / n) * 100) : null;
+          return (
+            <React.Fragment key={label}>
+              <div className="fn-st" style={{ '--c': v(c), '--w': `${Math.max(22, (n / max) * 100)}%` }}>
+                <div className="fn-bar"><Ic size={15} /><span>{label}</span><b>{miss ? '—' : <CountUp to={n} />}</b></div>
+              </div>
+              {next && <div className="fn-conv"><i />{conv === null ? '—' : `${conv.toFixed(0)}%`} <span>convert</span></div>}
+            </React.Fragment>
+          );
+        })}
+      </div>
+      <div className="fn-f">
+        <div><span>Quote → paid</span><b>{win.toFixed(1)}%</b></div>
+        <div><span>Invoiced</span><b>{shortInr(d.value[k])}</b></div>
+        <div><span>Collected</span><b style={{ color: v('--fx-green') }}>{shortInr(d.paidValue[k])}</b></div>
+      </div>
+    </Card>
+  );
+}
+
+/* top customers: billed vs collected this FY */
+const TC_COL = ['--fx-orange', '--fx-cyan', '--fx-violet', '--fx-green', '--fx-gold', '--fx-red'];
+const initials = (n) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+function TopCustomers() {
+  const { data: d, loading, live } = useTopCustomers(6);
+  const others = Math.max(0, d.total - d.rows.reduce((s, r) => s + r.billed, 0));
+  const pct = (n) => (d.total ? (n / d.total) * 100 : 0);
+  return (
+    <Card className="s6 fx">
+      <FxHead kicker="this FY" title="Top Customers" icon={Crown} live={live} loading={loading}>
+        <a className="fx-link" href={zoho('All_Customers')} target="_blank" rel="noopener noreferrer">Customers<ArrowUpRight size={14} /></a>
+      </FxHead>
+
+      <div className="tc-sum">
+        <div><span>Customers</span><b><CountUp to={d.count} /></b></div>
+        <div><span>Billed</span><b>{shortInr(d.total)}</b></div>
+        <div className="ok"><span>Collected</span><b>{shortInr(d.paid)}</b></div>
+        <div className="due"><span>Due</span><b>{shortInr(d.due)}</b></div>
+      </div>
+
+      {/* revenue share across customers */}
+      <div className="tc-share">
+        <div className="tc-sbar">
+          {d.rows.map((r, i) => <i key={r.name} style={{ flex: r.billed, background: v(TC_COL[i]) }} title={`${r.name}: ${pct(r.billed).toFixed(0)}%`} />)}
+          {others > 0 && <i className="oth" style={{ flex: others }} title={`Others: ${pct(others).toFixed(0)}%`} />}
+          {!d.total && <i className="oth" style={{ flex: 1 }} />}
+        </div>
+        <span>Revenue share</span>
+      </div>
+
+      <div className="tc">
+        {!loading && !d.rows.length && <div className="fx-empty">No invoices this financial year yet</div>}
+        {d.rows.map((r, i) => {
+          const paidPct = r.billed ? (r.paid / r.billed) * 100 : 0;
+          return (
+            <div key={r.name} className={`tc-r ${i === 0 ? 'lead' : ''}`} style={{ '--c': v(TC_COL[i]) }}>
+              <span className="tc-av">{initials(r.name)}{i === 0 && <em><Crown size={10} /></em>}</span>
+              <div className="tc-m">
+                <div className="tc-n"><b>{r.name}</b><span className="tc-sh">{pct(r.billed).toFixed(0)}%</span></div>
+                <div className="tc-meta">{r.n} invoice{r.n === 1 ? '' : 's'} · {paidPct.toFixed(0)}% collected</div>
+                <div className="tc-bar"><i className="paid" style={{ width: `${paidPct}%` }} /></div>
+              </div>
+              <div className="tc-v">
+                <b>{rupee(r.billed)}</b>
+                {r.due > 0 ? <small className="due">{rupee(r.due)} due</small> : <small className="ok"><CheckCircle2 size={11} />Settled</small>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+/* custom month + year picker (months counted as year*12 + month) */
+const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function MonthPicker({ value, min, max, activity, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [yr, setYr] = useState(Math.floor(value / 12));
+  const [view, setView] = useState('month');
+  const ref = useRef(null);
+  const years = Array.from({ length: Math.floor(max / 12) - Math.floor(min / 12) + 1 }, (_, i) => Math.floor(min / 12) + i).reverse();
+  const yearEvents = (y) => MON3.reduce((t, _, i) => t + (activity[`${y}-${i}`] || 0), 0);
+  useEffect(() => {
+    if (!open) return undefined;
+    setYr(Math.floor(value / 12)); setView('month');
+    const away = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away); document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  const top = Math.max(1, ...MON3.map((_, i) => activity[`${yr}-${i}`] || 0));
+  const pick = (k) => { onChange(k); setOpen(false); };
+  return (
+    <div className="mp" ref={ref}>
+      <button className={`mp-btn ${open ? 'on' : ''}`} onClick={() => setOpen(!open)} aria-haspopup="dialog" aria-expanded={open}>
+        <CalendarDays size={14} />{MON3[value % 12]} {Math.floor(value / 12)}<ChevronDown size={14} className="mp-caret" />
+      </button>
+      {open && (
+        <div className="mp-pop" role="dialog" aria-label="Choose month and year">
+          <button className={`mp-yr ${view === 'year' ? 'on' : ''}`} onClick={() => setView(view === 'year' ? 'month' : 'year')} aria-label="Choose year">
+            <b>{view === 'year' ? 'Select year' : yr}</b><ChevronDown size={15} />
+          </button>
+          {view === 'year' ? (
+            <div className="mp-grid">
+              {years.map((y) => (
+                <button key={y} className={`${y === yr ? 'sel' : ''} ${y === Math.floor(max / 12) ? 'now' : ''}`} onClick={() => { setYr(y); setView('month'); }}
+                  title={`${yearEvents(y)} events`}>
+                  {y}
+                </button>
+              ))}
+            </div>
+          ) : (
+          <div className="mp-grid">
+            {MON3.map((name, i) => {
+              const k = yr * 12 + i; const off = k < min || k > max; const ev = activity[`${yr}-${i}`] || 0;
+              return (
+                <button key={name} className={`${k === value ? 'sel' : ''} ${k === max ? 'now' : ''}`} disabled={off} onClick={() => pick(k)}
+                  title={off ? 'No data for this month' : `${ev} events`}>
+                  {name}
+                  <i style={{ width: `${off ? 0 : Math.max(ev ? 18 : 0, (ev / top) * 100)}%` }} />
+                </button>
+              );
+            })}
+          </div>
+          )}
+          <div className="mp-f">
+            <span><i />activity</span>
+            <button onClick={() => pick(max)}>This month</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* business pulse: month calendar of orders + invoices + payments, browsable */
+const WD7 = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+function BusinessPulse() {
+  const { data: d, loading, live } = useBusinessPulse();
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const [ym, setYm] = useState(() => [today.getFullYear(), today.getMonth()]);
+  const [hov, setHov] = useState(null);
+  const [y, m] = ym;
+  // selectable range: earliest record's month (at least 12 months back) .. this month; months counted as y*12+m
+  const maxM = today.getFullYear() * 12 + today.getMonth();
+  const minM = Math.min(maxM - 12, d.first ? d.first.getFullYear() * 12 + d.first.getMonth() : maxM);
+  const cur = y * 12 + m;
+  const go = (k) => { if (k >= minM && k <= maxM) { setYm([Math.floor(k / 12), k % 12]); setHov(null); } };
+  // activity per month for the picker ('y-m' -> events)
+  const perMonth = useMemo(() => {
+    const out = {}; Object.entries(d.days).forEach(([k, x]) => { const [yy, mm] = k.split('-'); const key = `${yy}-${mm}`; out[key] = (out[key] || 0) + x.so + x.inv + x.pay; });
+    return out;
+  }, [d.days]);
+
+  const n = (x) => x.so + x.inv + x.pay;
+  const lead = (new Date(y, m, 1).getDay() + 6) % 7; const dim = new Date(y, m + 1, 0).getDate();
+  const cells = Array.from({ length: dim }, (_, i) => { const date = new Date(y, m, i + 1); return { date, ...(d.days[dayKey(date)] || { so: 0, inv: 0, pay: 0 }) }; });
+  const past = cells.filter((c) => c.date <= today);
+  const max = Math.max(1, ...cells.map(n));
+  const tot = cells.reduce((s, c) => ({ so: s.so + c.so, inv: s.inv + c.inv, pay: s.pay + c.pay }), { so: 0, inv: 0, pay: 0 });
+  const active = past.filter(n).length;
+  let streak = 0; let run = 0; past.forEach((c) => { run = n(c) ? run + 1 : 0; streak = Math.max(streak, run); });
+  const best = cells.reduce((a, c) => (n(c) > n(a) ? c : a), cells[0]);
+  const fmtD = (x, o) => x.toLocaleDateString('en-GB', o);
+  const label = (x) => x.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+  return (
+    <Card className="s6 fx">
+      <FxHead kicker="month view" title="Business Pulse" icon={Activity} live={live} loading={loading}>
+        <MonthPicker value={cur} min={minM} max={maxM} activity={perMonth} onChange={go} />
+      </FxHead>
+      <div className="bp-stats">
+        <div><Activity size={15} /><b>{active}<small>/{past.length}</small></b><span>active days</span></div>
+        <div><Flame size={15} /><b>{streak}</b><span>best streak</span></div>
+        <div><Zap size={15} /><b>{n(best) ? fmtD(best.date, { day: '2-digit', month: 'short' }) : '—'}</b><span>busiest · {n(best)} events</span></div>
+      </div>
+      <div className="bp-cal" onMouseLeave={() => setHov(null)}>
+        {WD7.map((w) => <span key={w} className="bp-wd">{w}</span>)}
+        {Array.from({ length: lead }, (_, i) => <i key={`p${i}`} />)}
+        {cells.map((c) => {
+          const future = c.date > today; const lv = n(c) ? Math.ceil((n(c) / max) * 4) : 0;
+          return (
+            <button key={+c.date} className={`bp-day l${lv} ${future ? 'fut' : ''} ${+c.date === +today ? 'now' : ''} ${hov && +hov.date === +c.date ? 'on' : ''}`}
+              onMouseEnter={() => !future && setHov(c)} onFocus={() => !future && setHov(c)} tabIndex={future ? -1 : 0}>
+              <span>{c.date.getDate()}</span>{n(c) > 0 && <em>{n(c)}</em>}
+              {hov && +hov.date === +c.date && (
+                <div className={`bp-pop ${(lead + c.date.getDate() - 1) % 7 === 0 ? 'l' : (lead + c.date.getDate() - 1) % 7 === 6 ? 'r' : ''}`} role="tooltip">
+                  <b>{fmtD(c.date, { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}</b>
+                  {n(c) ? (
+                    <>
+                      <span><i style={{ background: v('--fx-cyan') }} />Orders<strong>{c.so}</strong></span>
+                      <span><i style={{ background: v('--fx-gold') }} />Invoices<strong>{c.inv}</strong></span>
+                      <span><i style={{ background: v('--fx-green') }} />Payments<strong>{c.pay}</strong></span>
+                      <span className="tot">Total<strong>{n(c)}</strong></span>
+                    </>
+                  ) : <span className="none">No activity</span>}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <div className="bp-tip">
+        <b>{hov ? fmtD(hov.date, { weekday: 'short', day: '2-digit', month: 'short' }) : `${label(new Date(y, m, 1))} total`}</b>
+        <span><i style={{ background: v('--fx-cyan') }} />{(hov || tot).so} orders</span>
+        <span><i style={{ background: v('--fx-gold') }} />{(hov || tot).inv} invoices</span>
+        <span><i style={{ background: v('--fx-green') }} />{(hov || tot).pay} payments</span>
+        <span className="bp-scale">Less{[0, 1, 2, 3, 4].map((l) => <i key={l} className={`bp-c l${l}`} />)}More</span>
+      </div>
+    </Card>
+  );
+}
+
+/* master records: live counts per core module */
+const MASTER_ICON = { cust: [Users, '--fx-cyan'], prod: [Package, '--fx-gold'], emp: [Contact, '--fx-violet'], vend: [Store, '--fx-orange'], veh: [CarFront, '--fx-green'], trans: [Truck, '--fx-red'] };
+function MasterRecords() {
+  const { data: d, loading, live } = useMasterCounts();
+  const total = MASTERS.reduce((s, m) => s + (d[m.key]?.total || 0), 0);
+  return (
+    <Card className="s12 fx">
+      <FxHead kicker={`${total.toLocaleString('en-IN')} records`} title="Master Data Core" icon={Database} live={live} loading={loading}>
+        <span className="fx-pill"><Database size={13} />Core Master</span>
+      </FxHead>
+      <div className="mr">
+        {MASTERS.map((m) => {
+          const x = d[m.key]; const [Ic, c] = MASTER_ICON[m.key];
+          return (
+            <a key={m.key} className={`mr-t ${x ? '' : 'off'}`} href={zoho(m.report)} target="_blank" rel="noopener noreferrer" style={{ '--c': v(c) }}>
+              <span className="mr-ic"><Ic size={18} /></span>
+              <span className="mr-l">{m.label}</span>
+              <b>{x ? <CountUp to={x.total} /> : '—'}</b>
+              <small>{!x ? 'could not load' : x.added ? <><em>+{x.added}</em> this month</> : x.added === 0 ? 'no new this month' : 'total records'}</small>
+              <ArrowUpRight className="mr-go" size={14} />
+            </a>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 /* ============ App ============ */
 export default function App() {
   const [loading, setLoading] = useState(true); const [ready, setReady] = useState(false);
@@ -1340,7 +1511,7 @@ export default function App() {
     const c = gsap.context(() => {
       const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
       tl.fromTo('.top', { opacity: 0, y: -18 }, { opacity: 1, y: 0, duration: 0.7 }, 0.3)
-        .fromTo('.reveal', { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.7, stagger: 0.06 }, 0.4);
+        .fromTo('.reveal', { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.7, stagger: 0.06, clearProps: 'transform' }, 0.4);
     }, shell);
     return () => c.revert();
   }, [ready]);
@@ -1385,11 +1556,9 @@ export default function App() {
           <WeeklyRevenue />
           <Payments />
           <Invoices />
-          <AreaChart /><Pipeline />
-          <ModuleBars />
-          <VBars title="Brand share" sub="% of dispatched volume" data={BRANDS} unit="%" link="Brand_Report" colorFor={(_, i) => ['--gold', '--chilli', '--leaf', '--volt', '--toast'][i]} />
-          <VBars title="Weight variance" sub="Daily check vs 1% tolerance" data={WEIGHT} limit={1} unit="%" link="Daily_Weight_Checking_Report" colorFor={(val) => (val > 1 ? '--chilli' : '--leaf')} />
-          <Rings />
+          <CashRadar /><SalesFunnel />
+          <TopCustomers /><BusinessPulse />
+          <MasterRecords />
           {/* <Dispatches /> */}
         </div>
         <div className="note">Sample data shown. Connect to Zoho Creator to see live records.</div>
