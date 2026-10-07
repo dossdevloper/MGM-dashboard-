@@ -406,7 +406,6 @@ td.id{color:var(--muted);font-size:11.5px}td.num,th.num{text-align:right;font-we
 .iv-st{margin-bottom:12px;font:700 10px 'Poppins',var(--f-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--w-sub)}
 .iv-donut{display:flex;justify-content:center;margin:0 0 16px}
 .iv-svg{width:100%;height:100%;display:block}
-.iv-pct{font:700 10px 'Poppins',var(--f-ui);fill:#fff;pointer-events:none}
 .iv-legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 .iv-legend .wm-row:last-child:nth-child(odd){grid-column:1 / -1}
 .iv-list{display:grid;gap:8px}
@@ -460,3 +459,5 @@ td.id{color:var(--muted);font-size:11.5px}td.num,th.num{text-align:right;font-we
   .pm-grid2{grid-template-columns:1fr}
   .ps{border-left:0;border-top:1px solid var(--w-line);border-bottom-left-radius:inherit}
 }
+
+.iv-empty{padding:18px;text-align:center;font:500 12px 'Poppins',var(--f-ui);color:var(--w-sub);border:1px dashed var(--w-line);border-radius:12px}

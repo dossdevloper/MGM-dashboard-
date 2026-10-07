@@ -6,7 +6,7 @@ import {
   Search, Sun, Moon, Upload, Plus, ArrowUpRight, TrendingUp, TrendingDown, IndianRupee, UserPlus,CheckCircle2, XCircle, Clock3, PencilLine, BarChart3,Wallet,CalendarClock, Gauge, Cookie, Pause, Play,
 } from 'lucide-react';
 import './App.css';
-import { useSalesOrderStatus, usePayments, PAYMENTS } from './zoho.jsx';
+import { useSalesOrderStatus, usePayments, PAYMENTS, useInvoices, INVOICES as INV_CFG } from './zoho.jsx';
 
 // import './Loader_snippet.jsx';
 
@@ -70,22 +70,7 @@ const TODAY = [
 
 const PAY_MONTHS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
 
-const INV_REPORT = 'All_Invoices'; // change to your Zoho Creator invoice report link name
-const INV_STATUS = [
-  ['Draft', 3, '--w-tan'], ['Issued', 11, '--w-blue'], ['Partially Paid', 4, '--w-gold'],
-  ['Paid', 9, '--w-green'], ['Cancelled', 3, '--w-red'],
-];
-const INV_STATS = [
-  ['Today', 0, 0, '--w-purple'], ['This week', 128500, 4, '--w-blue'],
-  ['This month', 411400, 26, '--w-orange'], ['This year', 1948400, 30, '--w-green'],
-];
-const INVOICES = [ // id, status, customer, due, amount
-  ['INV-000454', 'Issued', 'Sri Balaji Agencies', '12-Oct-2026', 101300],
-  ['INV-000453', 'Partially Paid', 'Kovai Distributors', '10-Oct-2026', 22800],
-  ['INV-000452', 'Paid', 'Madurai Cold Chain', '29-Sep-2026', 70700],
-  ['INV-000451', 'Draft', 'Nilgiri Traders', '15-Oct-2026', 130500],
-  ['INV-000450', 'Cancelled', 'Ocean Foods Pvt Ltd', '09-Oct-2026', 8700],
-];
+const INV_REPORT = INV_CFG.report;
 /* ============ helpers ============ */
 const v = (n) => `var(${n})`;
 function smooth(p) {
@@ -714,16 +699,21 @@ function Payments() {
 /* invoices: period tiles + status donut + recent list */
 function Invoices() {
   const ready = useContext(Ready); const r = useRef(null); const [h, setH] = useState(null);
+  const { data: inv, loading } = useInvoices();
+  const INV_STATUS = INV_CFG.statuses.map(([label, c]) => [label, inv.status[label] || 0, c]);
+  const INV_STATS = [['Today', 'today', '--w-purple'], ['This week', 'week', '--w-blue'], ['This month', 'month', '--w-orange'], ['This year', 'year', '--w-green']]
+    .map(([name, k, c]) => [name, inv.stats[k].amt, inv.stats[k].n, c]);
   const R = 66, C = 2 * Math.PI * R, GAP = 3;
   const total = INV_STATUS.reduce((s, x) => s + x[1], 0);
   const inr = (n) => `₹${n.toLocaleString('en-IN')}`;
   const colorOf = Object.fromEntries(INV_STATUS.map(([n, , c]) => [n, c]));
   let acc = 0;
   const segs = INV_STATUS.map(([label, n, c]) => {
-    const len = (n / total) * C; const mid = ((acc + len / 2) / C) * 2 * Math.PI - Math.PI / 2;
-    const o = { label, v: n, c, len, off: acc, pct: Math.round((n / total) * 100), x: 88 + R * Math.cos(mid), y: 88 + R * Math.sin(mid) };
+    const len = total ? (n / total) * C : 0;
+    const o = { label, v: n, c, len, off: acc };
     acc += len; return o;
   });
+  const segKey = segs.map((s) => s.v).join(',');
   useLayoutEffect(() => {
     if (!ready) return undefined;
     const c = gsap.context(() => {
@@ -732,14 +722,21 @@ function Invoices() {
         .from('.pm-tab', { opacity: 0, y: 14, duration: 0.5, stagger: 0.08, clearProps: 'opacity,transform' }, 0.1)
         .from('.iv-st', { opacity: 0, x: -10, duration: 0.5, stagger: 0.1 }, 0.4)
         .from('.iv-svg', { scale: 0.6, rotation: -40, opacity: 0, duration: 0.9, ease: 'back.out(1.5)', transformOrigin: '50% 50%' }, 0.4)
-        .from('.iv-pct,.donut-c', { opacity: 0, duration: 0.5 }, 1.1)
+        .from('.donut-c', { opacity: 0, duration: 0.5 }, 1.1)
         .from('.iv-legend .wm-row', { opacity: 0, y: 12, duration: 0.45, stagger: 0.07, clearProps: 'opacity,transform' }, 0.9)
         .from('.iv-row', { opacity: 0, x: 28, duration: 0.5, stagger: 0.09, clearProps: 'opacity,transform' }, 0.5);
+    }, r);
+    return () => c.revert();
+  }, [ready]);
+  // donut segments: re-animate when live counts arrive
+  useLayoutEffect(() => {
+    if (!ready) return undefined;
+    const c = gsap.context(() => {
       segs.forEach((s, i) => gsap.fromTo(`.iv${i}`, { strokeDasharray: `0 ${C}` }, { strokeDasharray: `${Math.max(0, s.len - GAP)} ${C}`, duration: 1.1, delay: 0.8 + i * 0.12, ease: 'power3.out' }));
     }, r);
     return () => c.revert();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready]);
+  }, [ready, segKey]);
   return (
     <Card className="s12 warm pm iv">
       <div className="wm-wrap" ref={r}>
@@ -751,7 +748,7 @@ function Invoices() {
         <div className="pm-tabs">
           {INV_STATS.map(([name, amt, n, c]) => (
             <div key={name} className="pm-tab" style={{ '--c': v(c) }}>
-              <small>{name}</small><b>{inr(amt)}</b><span>{n} invoices</span>
+              <small>{name}</small><b>{inr(amt)}</b><span>{loading ? 'Loading…' : `${n} invoice${n === 1 ? '' : 's'}`}</span>
             </div>
           ))}
         </div>
@@ -770,7 +767,6 @@ function Invoices() {
                         onMouseEnter={() => setH(i)} onMouseLeave={() => setH(null)} />
                     ))}
                   </g>
-                  {segs.filter((s) => s.pct >= 8).map((s) => <text key={s.label} className="iv-pct" x={s.x} y={s.y + 4} textAnchor="middle">{s.pct}%</text>)}
                 </svg>
                 <div className="donut-c"><b>{(h === null ? total : segs[h].v).toLocaleString('en-IN')}</b><span>{h === null ? 'Invoices' : segs[h].label}</span></div>
               </div>
@@ -787,13 +783,14 @@ function Invoices() {
           <div className="iv-col">
             <div className="iv-st">Recent invoices</div>
             <div className="iv-list">
-              {INVOICES.map(([id, status, name, due, amt]) => (
-                <a key={id} className="iv-row" style={{ '--c': v(colorOf[status]) }} href={zoho(INV_REPORT)} target="_blank" rel="noopener noreferrer">
+              {!loading && !inv.recent.length && <div className="iv-empty">No invoices yet</div>}
+              {inv.recent.map(([id, status, name, due, amt], k) => (
+                <a key={id || k} className="iv-row" style={{ '--c': v(colorOf[status] || '--w-tan') }} href={zoho(INV_REPORT)} target="_blank" rel="noopener noreferrer">
                   <i className="iv-dot" />
                   <div className="iv-main">
                     <div className="iv-top"><span className="iv-id">{id}</span><span className="iv-pill">{status}</span></div>
                     <div className="iv-name">{name}</div>
-                    <div className="iv-due"><CalendarClock size={12} />Due: {due}</div>
+                    {due && <div className="iv-due"><CalendarClock size={12} />Due: {due}</div>}
                   </div>
                   <b className="iv-amt">{inr(amt)}</b>
                 </a>

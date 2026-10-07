@@ -40,6 +40,27 @@ export const PAYMENTS = {
   ],
 };
 
+export const INVOICES = {
+  report: 'All_Invoices',
+  fields: {
+    invoiceNo: 'Invoice_No',
+    date: 'Invoice_Date',      // used for Today / This week / This month / This year
+    dueDate: 'Due_Date',
+    customer: 'Customer',
+    amount: 'Grand_Total',     // invoice total
+    status: 'Status',          // dropdown
+  },
+  // Status choices exactly as in Creator -> colour
+  statuses: [
+    ['Draft', '--w-tan'],
+    ['Issued', '--w-blue'],
+    ['Partially Paid', '--w-gold'],
+    ['Paid', '--w-green'],
+    ['Cancelled', '--w-red'],
+  ],
+  recent: 5,                   // how many recent invoices to list
+};
+
 // Shown when running outside Zoho Creator (local `npm run dev`)
 const SAMPLE_SO_COUNTS = { Draft: 96, Confirmed: 214, Shipped: 132, Cancelled: 38, Completed: 405 };
 const SAMPLE_PAYMENTS = {
@@ -52,6 +73,18 @@ const SAMPLE_PAYMENTS = {
     month: { Received: { amt: 188600, n: 14 }, Pending: { amt: 31500, n: 4 }, Cancelled: { amt: 6000, n: 2 } },
     year: { Received: { amt: 1362400, n: 112 }, Pending: { amt: 146300, n: 18 }, Cancelled: { amt: 35200, n: 6 } },
   },
+};
+
+const SAMPLE_INVOICES = {
+  stats: { today: { amt: 0, n: 0 }, week: { amt: 128500, n: 4 }, month: { amt: 411400, n: 26 }, year: { amt: 1948400, n: 30 } },
+  status: { Draft: 3, Issued: 11, 'Partially Paid': 4, Paid: 9, Cancelled: 3 },
+  recent: [ // [id, status, customer, due, amount]
+    ['INV-000454', 'Issued', 'Sri Balaji Agencies', '12-Oct-2026', 101300],
+    ['INV-000453', 'Partially Paid', 'Kovai Distributors', '10-Oct-2026', 22800],
+    ['INV-000452', 'Paid', 'Madurai Cold Chain', '29-Sep-2026', 70700],
+    ['INV-000451', 'Draft', 'Nilgiri Traders', '15-Oct-2026', 130500],
+    ['INV-000450', 'Cancelled', 'Ocean Foods Pvt Ltd', '09-Oct-2026', 8700],
+  ],
 };
 
 /* ============ SDK helpers ============ */
@@ -198,4 +231,50 @@ export function usePayments() {
     const status = Object.fromEntries(Object.entries(b).map(([k, v]) => [k, v.st]));
     return { months: months.map(Math.round), today: out('today'), week: out('week'), month: out('month'), year: out('year'), status };
   }, SAMPLE_PAYMENTS, EMPTY_PAYMENTS);
+}
+
+/* ============ Invoices ============
+   { stats: { today|week|month|year: { amt, n } }, status: { label: count }, recent: [[id, status, customer, due, amount], ...] }
+   Periods and status counts are by invoice date within the current FY (Apr–Mar). */
+const EMPTY_INVOICES = {
+  stats: { today: { amt: 0, n: 0 }, week: { amt: 0, n: 0 }, month: { amt: 0, n: 0 }, year: { amt: 0, n: 0 } },
+  status: {}, recent: [],
+};
+
+export function useInvoices() {
+  return useZohoReport(INVOICES.report, (records) => {
+    const { fields } = INVOICES;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(today); weekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7)); // Monday
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const fyYear = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
+    const fyStart = new Date(fyYear, 3, 1);
+
+    const stats = { today: { amt: 0, n: 0 }, week: { amt: 0, n: 0 }, month: { amt: 0, n: 0 }, year: { amt: 0, n: 0 } };
+    const status = {};
+    const known = new Map(INVOICES.statuses.map(([l]) => [l.toLowerCase(), l]));
+    const add = (k, amt) => { stats[k].amt += amt; stats[k].n += 1; };
+
+    const rows = records.map((r) => {
+      const raw = String(valueOf(r[fields.status])).trim();
+      return { r, d: toDate(r[fields.date]), amt: toNumber(r[fields.amount]), st: known.get(raw.toLowerCase()) || raw };
+    });
+    rows.forEach(({ d, amt, st }) => {
+      if (!d || d < fyStart || d > today) return;              // current FY up to today only
+      add('year', amt);
+      status[st] = (status[st] || 0) + 1;
+      if (d >= monthStart) add('month', amt);
+      if (d >= weekStart) add('week', amt);
+      if (+d === +today) add('today', amt);
+    });
+    Object.values(stats).forEach((x) => { x.amt = Math.round(x.amt); });
+
+    // newest first: invoice date, then record ID
+    const recent = rows
+      .sort((a, b) => (b.d || 0) - (a.d || 0) || Number(b.r.ID || 0) - Number(a.r.ID || 0))
+      .slice(0, INVOICES.recent)
+      .map(({ r, amt, st }) => [String(valueOf(r[fields.invoiceNo])), st, String(valueOf(r[fields.customer])), String(valueOf(r[fields.dueDate])), Math.round(amt)]);
+    return { stats, status, recent };
+  }, SAMPLE_INVOICES, EMPTY_INVOICES);
 }
