@@ -72,6 +72,18 @@ export const CUSTOMERS = {
   fields: { date: 'Added_Time' },  // Creator's built-in created time (must be shown in the report)
 };
 
+/* Factory line: each station shows one module, in the order work flows through the business.
+   date = the record's date field; if it's missing, any other "...Date" field or Added_Time is used. */
+export const FLOW = [
+  { key: 'quote', report: 'All_Quotations', date: 'Quotation_Date', unit: ['quotation', 'quotations'] },
+  { key: 'order', report: 'All_Sales_Orders', date: 'SO_date', unit: ['sales order', 'sales orders'] },
+  { key: 'stock', report: 'All_Stock_Transfers', date: 'Transfer_Date', unit: ['stock transfer', 'stock transfers'] },
+  { key: 'assign', report: 'All_Packing_Assignments', date: 'Assignment_Date', unit: ['assignment', 'assignments'] },
+  { key: 'weigh', report: 'Daily_Weight_Checking_Report', date: 'Date_field', unit: ['weight check', 'weight checks'] },
+  { key: 'pack', report: 'All_Packing_Lists', date: 'Packing_Date', unit: ['packing list', 'packing lists'] },
+  { key: 'ship', report: 'All_Shipments', date: 'Shipment_Date', unit: ['shipment', 'shipments'] },
+];
+
 // Shown when running outside Zoho Creator (local `npm run dev`)
 const SAMPLE_SO_COUNTS = { Draft: 96, Confirmed: 214, Shipped: 132, Cancelled: 38, Completed: 405 };
 const SAMPLE_PAYMENTS = {
@@ -125,10 +137,34 @@ const recordCache = new Map();
 export function getAllRecords(reportName, criteria = '') {
   const key = `${reportName}|${criteria}`;
   if (!recordCache.has(key)) {
-    recordCache.set(key, fetchAllRecords(reportName, criteria).catch((e) => { recordCache.delete(key); throw e; }));
+    recordCache.set(key, queued(() => withRetry(() => fetchAllRecords(reportName, criteria), reportName))
+      .catch((e) => { recordCache.delete(key); throw e; }));
   }
   return recordCache.get(key);
 }
+
+// Creator rejects bursts of parallel API calls, so run at most 2 report fetches at a time
+const MAX_PARALLEL = 2; let active = 0; const waiting = [];
+function queued(job) {
+  return new Promise((resolve, reject) => {
+    const run = () => { active += 1; job().then(resolve, reject).finally(() => { active -= 1; waiting.shift()?.(); }); };
+    if (active < MAX_PARALLEL) run(); else waiting.push(run);
+  });
+}
+
+// retry transient failures (rate limits, network); a missing report fails the same way every time
+async function withRetry(job, reportName, tries = 3) {
+  for (let n = 1; ; n++) {
+    try { return await job(); } catch (e) {
+      if (n >= tries) { console.error(`${reportName}: failed after ${tries} tries`, e); throw e; }
+      await new Promise((r) => setTimeout(r, 700 * n));
+    }
+  }
+}
+
+// Creator answers an empty report / a page past the end with a "no records" error
+const isNoRecords = (e) => e?.code === 9280 || e?.responseText?.code === 9280
+  || /no\s*records?/i.test(`${e?.message || ''} ${e?.responseText?.message || ''} ${typeof e?.responseText === 'string' ? e.responseText : ''}`);
 
 async function fetchAllRecords(reportName, criteria) {
   await initSdk();
@@ -138,8 +174,7 @@ async function fetchAllRecords(reportName, criteria) {
     try {
       res = await sdk().API.getAllRecords({ appName: APP_NAME, reportName, criteria, page, pageSize });
     } catch (e) {
-      // Creator rejects with "no records" once we page past the end
-      if (out.length || e?.code === 9280 || e?.responseText?.code === 9280) break;
+      if (out.length || isNoRecords(e)) break;
       throw e;
     }
     const rows = res?.data || [];
@@ -341,6 +376,60 @@ const countToday = (cfg) => (records) => {
   const now = new Date(); const today = +new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return records.filter((r) => +toDate(r[cfg.fields.date]) === today).length;
 };
+
+/* ============ Factory line ============
+   Counts per period (today / month / FY year) for every FLOW station, plus
+   sales-order fulfilment (Shipped + Completed vs all non-draft, non-cancelled orders)
+   and trucks from Daily Dispatches. */
+const periodStarts = () => {
+  const now = new Date(); const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const fy = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
+  return { today, month: new Date(today.getFullYear(), today.getMonth(), 1), year: new Date(fy, 3, 1) };
+};
+const periodsOf = (d, p) => (!d || d > p.today ? [] : ['today', 'month', 'year'].filter((k) => d >= p[k]));
+const dateOf = (r, field) => {
+  const own = toDate(r[field]);
+  if (own) return own;
+  const k = Object.keys(r).find((x) => /date/i.test(x) && toDate(r[x]));
+  return k ? toDate(r[k]) : toDate(r.Added_Time);
+};
+const zeroP = () => ({ today: 0, month: 0, year: 0 });
+const countByPeriod = (field) => (records) => {
+  const p = periodStarts(); const out = zeroP();
+  records.forEach((r) => periodsOf(dateOf(r, field), p).forEach((k) => { out[k] += 1; }));
+  return out;
+};
+
+const SAMPLE_FLOW = {
+  quote: { today: 6, month: 48, year: 342 }, order: { today: 4, month: 37, year: 518 }, stock: { today: 2, month: 21, year: 156 },
+  assign: { today: 3, month: 29, year: 301 }, weigh: { today: 5, month: 64, year: 198 }, pack: { today: 3, month: 31, year: 289 },
+  ship: { today: 2, month: 26, year: 251 },
+};
+
+export function useFactoryFlow() {
+  // FLOW is a fixed list, so these hooks are always called in the same order
+  const st = FLOW.map((f) => useZohoReport(f.report, countByPeriod(f.date), SAMPLE_FLOW[f.key], zeroP())); // eslint-disable-line react-hooks/rules-of-hooks
+
+  const so = useZohoReport(SALES_ORDER.report, (records) => {
+    const p = periodStarts(); const done = zeroP(); const all = zeroP();
+    records.forEach((r) => {
+      const s = String(valueOf(r[SALES_ORDER.fields.status])).trim().toLowerCase();
+      if (!s || s === 'draft' || s === 'cancelled') return;
+      periodsOf(dateOf(r, SALES_ORDER.fields.date), p).forEach((k) => {
+        all[k] += 1; if (s === 'shipped' || s === 'completed') done[k] += 1;
+      });
+    });
+    return { done, all };
+  }, { done: { today: 3, month: 30, year: 437 }, all: { today: 4, month: 34, year: 480 } }, { done: zeroP(), all: zeroP() });
+
+  const trucks = useZohoReport(DISPATCHES.report, countByPeriod(DISPATCHES.fields.date), { today: 6, month: 71, year: 214 }, zeroP());
+
+  return {
+    stations: Object.fromEntries(FLOW.map((f, i) => [f.key, { ...st[i], unit: f.unit, report: f.report }])),
+    fulfil: so.data, trucks: trucks.data,
+    loading: st.some((x) => x.loading) || so.loading || trucks.loading,
+  };
+}
 
 export function useTodayHighlights() {
   const wk = useWeeklyRevenue();

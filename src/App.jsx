@@ -3,10 +3,10 @@ import gsap from 'gsap';
 import {
   Users, Contact, Store, MapPin, Truck, Package, FileText, ShoppingCart, Repeat, Scale, Send,
   Droplets, MapPinned, CarFront, Boxes, Layers, Barcode, ListChecks, Tag, Ruler, ClipboardList,
-  Search, Sun, Moon, Upload, Plus, ArrowUpRight, TrendingUp, TrendingDown, IndianRupee, UserPlus,CheckCircle2, XCircle, Clock3, PencilLine, BarChart3,Wallet,CalendarClock, Gauge, Cookie, Pause, Play,
+  Search, Sun, Moon, Upload, Plus, ArrowUpRight, TrendingUp, TrendingDown, IndianRupee, UserPlus,CheckCircle2, XCircle, Clock3, PencilLine, BarChart3,Wallet,CalendarClock, Pause, Play,
 } from 'lucide-react';
 import './App.css';
-import { useSalesOrderStatus, usePayments, PAYMENTS, useInvoices, useWeeklyRevenue, useTodayHighlights, INVOICES as INV_CFG } from './zoho.jsx';
+import { useSalesOrderStatus, usePayments, PAYMENTS, useInvoices, useWeeklyRevenue, useTodayHighlights, useFactoryFlow, DISPATCHES, INVOICES as INV_CFG } from './zoho.jsx';
 
 // import './Loader_snippet.jsx';
 
@@ -896,40 +896,49 @@ function Palette({ open, onClose }) {
 }
 
 /* ============ Factory line: dough to dispatch ============ */
-const LINE_UNITS = {
-  'Unit A': { mix: 120, temp: 62, vary: 0.82, rate: 410, mt: 4.2, eff: 94.2 },
-  'Unit B': { mix: 105, temp: 60, vary: 0.91, rate: 360, mt: 3.6, eff: 91.7 },
-  'Unit C': { mix: 98, temp: 64, vary: 0.77, rate: 330, mt: 3.1, eff: 93.4 },
-};
+// station -> FLOW key in zoho.jsx (quotation > order > stock > packing assignment > weight check > packing list > shipment)
 const FL_STAGES = [
-  ['01', 'Dough mixing', 100, 'mix'], ['02', 'Sheet rolling', 300, 'roll'], ['03', 'Press & cut', 500, 'cut'],
-  ['04', 'Tunnel drying', 700, 'dry'], ['05', 'Weight check', 930, 'weigh'], ['06', 'Packing', 1090, 'pack'], ['07', 'Dispatch', 1260, 'ship'],
+  ['01', 'Dough mixing', 100, 'quote'], ['02', 'Sheet rolling', 300, 'order'], ['03', 'Press & cut', 500, 'stock'],
+  ['04', 'Tunnel drying', 700, 'assign'], ['05', 'Weight check', 930, 'weigh'], ['06', 'Packing', 1090, 'pack'], ['07', 'Dispatch', 1260, 'ship'],
 ];
+// card icon + accent per station
+const FL_CARD = {
+  quote: [FileText, '--gold'], order: [ShoppingCart, '--chilli'], stock: [Repeat, '--toast'], assign: [ClipboardList, '--leaf'],
+  weigh: [Scale, '--volt'], pack: [Package, '--toast'], ship: [Send, '--leaf'],
+};
+const FL_PERIODS = { Today: 'today', 'This month': 'month', 'This year': 'year' };
 // truck bed slots, loading order: far end first, bottom row first
 const SLOTS = [-31, -51, -71].flatMap((cy) => [85, 62, 39, 16].map((cx) => [cx, cy]));
 const jig = (b, a, d = 0) => +(b + (Math.random() - 0.5) * a).toFixed(d);
 
 function FactoryLine({ greet }) {
   const ready = useContext(Ready);
-  const [unit, setUnit] = useState('Unit A');
-  const [m, setM] = useState({});
-  const root = useRef(null); const discEl = useRef(null); const cartonEl = useRef(null); const truckEl = useRef(null);
-  const count = useRef(0); const trucks = useRef(0);
+  const [period, setPeriod] = useState('This month');
+  const root = useRef(null);
+  const count = useRef(0);
   const [running, setRunning] = useState(true);
 const ctxRef = useRef(null);
-  // live metrics (swap with Zoho Creator API data later)
-  useEffect(() => {
-    if (!running) return undefined;  
-    const b = LINE_UNITS[unit];
-    const tick = () => setM({
-      mix: `${jig(b.mix, 6)} kg batch`, roll: `${jig(1.2, 0.12, 2)} mm sheet`, cut: `${jig(b.rate, 24)} pcs/min`,
-      dry: `${jig(b.temp, 3)} °C`, weigh: `${jig(b.vary, 0.16, 2)}% variance`, pack: `${jig(24, 3)} cartons/h`,
-      ship: `${b.mt} MT today`, eff: jig(b.eff, 0.6, 1),
-    });
-    tick();
-    const i = setInterval(tick, 2200);
-    return () => clearInterval(i);
-  }, [unit,running]);
+  // live counts from Zoho, one module per station
+  const flow = useFactoryFlow(); const pk = FL_PERIODS[period];
+  const maxN = Math.max(1, ...FL_STAGES.map(([, , , k]) => flow.stations[k].data[pk]));
+  const fulfilPct = flow.fulfil.all[pk] ? Math.round((flow.fulfil.done[pk] / flow.fulfil.all[pk]) * 1000) / 10 : 0;
+  const fmt = (n) => (flow.loading ? '…' : n.toLocaleString('en-IN'));
+  // hover: find the station under the pointer (zones split halfway between stations)
+  const [hov, setHov] = useState(null);
+  const zone = (i) => [i ? (FL_STAGES[i - 1][2] + FL_STAGES[i][2]) / 2 : 12, i < FL_STAGES.length - 1 ? (FL_STAGES[i][2] + FL_STAGES[i + 1][2]) / 2 : 1348];
+  const onStageMove = (e) => {
+    if (e.target.closest('.fl-motor')) { setHov(null); return; }
+    const svg = e.currentTarget.querySelector('svg'); const b = svg.getBoundingClientRect(); const sb = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - b.left) / b.width) * 1360;
+    const i = FL_STAGES.findIndex((_, k) => x < zone(k)[1]);
+    const idx = i < 0 ? FL_STAGES.length - 1 : i;
+    const px = b.left - sb.left + e.currentTarget.scrollLeft + (FL_STAGES[idx][2] / 1360) * b.width;
+    setHov((h) => (h && h.i === idx && Math.abs(h.px - px) < 1 ? h : { i: idx, px, w: b.width }));
+  };
+  const onStageClick = (e) => {
+    if (hov === null || e.target.closest('.fl-motor')) return;
+    window.open(zoho(flow.stations[FL_STAGES[hov.i][3]].report), '_blank', 'noopener');
+  };
 
   useLayoutEffect(() => {
     if (!ready) return undefined;
@@ -951,6 +960,7 @@ const ctxRef = useRef(null);
       gsap.to('.fl-r2', { rotation: -360, duration: 2.2, repeat: -1, ease: 'none' });
       gsap.to('.fl-bw', { rotation: 360, duration: 0.9, repeat: -1, ease: 'none' });
       gsap.to('.fl-wave', { y: 3, duration: 0.8, yoyo: true, repeat: -1, ease: 'sine.inOut' });
+      gsap.to('.fl-drv-head', { y: -0.7, duration: 0.32, yoyo: true, repeat: -1, ease: 'sine.inOut' });
       gsap.fromTo('.fl-needle', { rotation: -38 }, { rotation: 38, duration: 1.4, yoyo: true, repeat: -1, ease: 'sine.inOut' });
       gsap.to('.fl-lamp', { opacity: 0.35, duration: 0.7, yoyo: true, repeat: -1, ease: 'sine.inOut', stagger: 0.12 });
       gsap.to('.fl-led', { opacity: 0.25, duration: 0.5, yoyo: true, repeat: -1, ease: 'steps(1)' });
@@ -978,8 +988,6 @@ const ctxRef = useRef(null);
       const bump = () => {
         count.current += 1;
         const filled = count.current % 12;
-        if (discEl.current) discEl.current.textContent = (18420 + count.current).toLocaleString('en-IN');
-        if (cartonEl.current) cartonEl.current.textContent = (1540 + Math.floor(count.current / 12)).toLocaleString('en-IN');
         if (pcEl) pcEl.textContent = `${filled}/12`;
         if (fill) gsap.to(fill, { attr: { height: filled * 3, y: 308 - filled * 3 }, duration: 0.25 });
       };
@@ -1031,7 +1039,6 @@ const ctxRef = useRef(null);
           .to(c, { scale: 1, opacity: 1, duration: 0.25, ease: 'back.out(2)' }, t + 0.45);
       });
       trk.to('.fl-toast', { opacity: 1, y: 0, duration: 0.4 }, 12.8)
-        .call(() => { trucks.current += 1; if (truckEl.current) truckEl.current.textContent = String(6 + trucks.current); }, null, 12.8)
         .to('.fl-truck', { x: T0, duration: 2.6, ease: 'power2.in' }, 12.8)
         .to('.fl-tw', { rotation: '+=540', duration: 2.6, ease: 'power2.in' }, 12.8)
         .to('.fl-toast', { opacity: 0, duration: 0.4 }, 15.2)
@@ -1058,13 +1065,14 @@ const ctxRef = useRef(null);
     {/* <button className={`fl-ctl ${running ? '' : 'off'}`} onClick={() => setRunning(!running)} aria-pressed={!running}>
       {running ? <><Pause />Stop</> : <><Play />Start</>}
     </button> */}
-    <Seg options={Object.keys(LINE_UNITS)} value={unit} onChange={setUnit} />
+    <Seg options={Object.keys(FL_PERIODS)} value={period} onChange={setPeriod} />
   </div>
 </div>
 
-<div className={`fl-stage ${running ? '' : 'paused'}`} ref={root}>
+<div className={`fl-stage ${running ? '' : 'paused'} ${hov ? 'hovering' : ''}`} ref={root}
+  onMouseMove={onStageMove} onMouseLeave={() => setHov(null)} onClick={onStageClick}>
         <span className="fl-scan" />
-        <svg className="fl-svg" viewBox="0 0 1360 400" role="img" aria-label="Animated production line from dough mixing to truck dispatch">
+        <svg className="fl-svg" viewBox="0 0 1360 348" role="img" aria-label="Animated production line from dough mixing to truck dispatch">
           
           <defs>
             <linearGradient id="flMetal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" className="gm1" /><stop offset="1" className="gm2" /></linearGradient>
@@ -1073,17 +1081,18 @@ const ctxRef = useRef(null);
           </defs>
 
           {/* HUD corners + floor */}
-          {['M12,30 V12 H30', 'M1348,30 V12 H1330', 'M12,370 V388 H30', 'M1348,370 V388 H1330'].map((d) => <path key={d} d={d} className="fl-corner" />)}
+          {['M12,30 V12 H30', 'M1348,30 V12 H1330', 'M12,320 V338 H30', 'M1348,320 V338 H1330'].map((d) => <path key={d} d={d} className="fl-corner" />)}
           <line className="fl-floor" x1="20" x2="1340" y1="330" y2="330" />
+          {hov && <rect className="fl-zone" x={zone(hov.i)[0] + 4} y="14" width={zone(hov.i)[1] - zone(hov.i)[0] - 8} height="324" rx="14" />}
 
           {/* stage header: flow line + numbered nodes */}
           <line className="fl-flow" x1="100" x2="1260" y1="46" y2="46" />
           {FL_STAGES.map(([n, name, x, key]) => (
             <g key={n}>
-              <circle className="fl-node" cx={x} cy="46" r="5" />
+              <title>{name}</title>
+              {/* node grows with this station's share of the busiest station */}
+              <circle className={`fl-node ${hov && FL_STAGES[hov.i][0] === n ? 'on' : ''}`} cx={x} cy="46" r={4 + 5 * (flow.stations[key].data[pk] / maxN)} style={{ transition: 'r .6s' }} />
               <text className="fl-no" x={x} y="30" textAnchor="middle">{n}</text>
-              <text className="fl-name" x={x} y="356" textAnchor="middle">{name.toUpperCase()}</text>
-              <text className="fl-met" x={x} y="376" textAnchor="middle">{m[key] || '...'}</text>
             </g>
           ))}
           <circle className="fl-pulse" cx="0" cy="46" r="4" />
@@ -1101,6 +1110,7 @@ const ctxRef = useRef(null);
             <g className="fl-paddle"><rect x="-32" y="-4" width="64" height="8" rx="4" /><rect x="-4" y="-32" width="8" height="64" rx="4" /></g>
           </g>
 {/* motor starter: green I = start, red O = stop */}
+<g className="fl-motor">
 <rect className="fl-body" x="162" y="156" width="34" height="62" rx="6" />
 <text className="fl-plabel" x="179" y="165" textAnchor="middle">MOTOR</text>
 <circle className={`fl-led ${running ? '' : 'off'}`} cx="179" cy="174" r="3.5" />
@@ -1121,6 +1131,7 @@ const ctxRef = useRef(null);
   <circle className="ring" cx="179" cy="207" r="8" />
   <circle className="cap" cx="179" cy="207" r="6" />
   <text x="179" y="210" textAnchor="middle">O</text>
+</g>
 </g>
           <rect className="fl-body" x="160" y="219" width="96" height="12" rx="3" />
           <circle className="fl-valve" cx="200" cy="225" r="7" />
@@ -1209,12 +1220,34 @@ const ctxRef = useRef(null);
 
           {/* ===== 07 TRUCK + DOCK ===== */}
           <rect x="1172" y="300" width="6" height="30" fill="#FFC22E" opacity=".5" />
-          <g transform="translate(0,300)"><g className="fl-hop" opacity="0"><rect className="fl-box" x="-12" y="-10" width="24" height="20" rx="2" /></g></g>
+          <g transform="translate(0,300)"><g className="fl-hop" opacity="0"><rect className="fl-box" x="-12" y="-10" width="24" height="20" rx="2" /><rect className="fl-lbl" x="-9" y="-5" width="18" height="10" rx="1.5" /><image href={LOGO} x="-8" y="-4" width="16" height="8" preserveAspectRatio="xMidYMid meet" /></g></g>
           <g className="fl-truck" transform="translate(1420,330)">
             <rect className="fl-tbed" x="0" y="-86" width="104" height="64" rx="4" />
-            {SLOTS.map(([cx, cy], k) => <g key={k} transform={`translate(${cx},${cy})`}><rect className="fl-box fl-tc" x="-10" y="-9" width="20" height="18" rx="2" opacity="0" /></g>)}
+            {SLOTS.map(([cx, cy], k) => (
+              <g key={k} transform={`translate(${cx},${cy})`}>
+                <g className="fl-tc" opacity="0">
+                  <rect className="fl-box" x="-10" y="-9" width="20" height="18" rx="2" />
+                  <rect className="fl-lbl" x="-8" y="-4.5" width="16" height="9" rx="1.5" />
+                  <image href={LOGO} x="-7" y="-3.5" width="14" height="7" preserveAspectRatio="xMidYMid meet" />
+                </g>
+              </g>
+            ))}
             <path className="fl-tcab" d="M108,-62 H136 L156,-40 V-22 H108 Z" />
             <path className="fl-twin" d="M114,-56 H133 L146,-42 H114 Z" />
+            {/* driver, clipped to the cab window, facing the road (right) */}
+            <clipPath id="flCabWin"><path d="M114,-56 H133 L146,-42 H114 Z" /></clipPath>
+            <g clipPath="url(#flCabWin)">
+              <path className="fl-drv-shirt" d="M117,-38 V-42.5 Q117,-46 121,-46 H127 Q131,-46 131,-42.5 V-38 Z" />
+              <g className="fl-drv-head">
+                <rect className="fl-drv-skin" x="122.6" y="-47.6" width="2.8" height="2.4" />
+                <circle className="fl-drv-skin" cx="124" cy="-50.4" r="3.6" />
+                <path className="fl-drv-cap" d="M120.3,-51 Q120.6,-55 124,-55 Q127.4,-55 127.7,-51 Z" />
+                <rect className="fl-drv-cap" x="126.4" y="-51.6" width="3.6" height="1.2" rx=".6" />
+                <circle cx="126.2" cy="-50.6" r=".55" fill="#2b1d14" />
+              </g>
+              <path className="fl-drv-arm" d="M128,-44.5 Q132,-45 135.5,-46.5" />
+              <line className="fl-drv-wheel" x1="134.5" y1="-50" x2="137.5" y2="-43" />
+            </g>
             <rect className="fl-tchas" x="0" y="-22" width="156" height="8" rx="3" />
             <circle cx="153" cy="-28" r="3" fill="#FFC22E" />
             {[26, 126].map((cx) => (
@@ -1228,28 +1261,58 @@ const ctxRef = useRef(null);
             </g>
           </g>
         </svg>
+        {hov && (() => {
+          const [n, name, , key] = FL_STAGES[hov.i]; const s = flow.stations[key]; const [Ic, c] = FL_CARD[key];
+          const val = s.data[pk]; const label = s.unit[1].replace(/^./, (ch) => ch.toUpperCase());
+          const edge = hov.i === 0 ? 'translateX(-18%)' : hov.i === FL_STAGES.length - 1 ? 'translateX(-82%)' : 'translateX(-50%)';
+          return (
+            <div className="fl-tip" style={{ left: hov.px, transform: edge, '--c': v(s.error ? '--chilli' : c), '--w': `${(val / maxN) * 100}%` }}>
+              <div className="ft-h"><span className="ft-no">{n}</span>{name}<span className="ft-per">{period}</span></div>
+              <div className="ft-m">
+                <span className="ft-ic"><Ic size={18} strokeWidth={2.1} /></span>
+                <div><b>{label}</b><code>{s.report}</code></div>
+              </div>
+              <div className="ft-v">
+                {s.loading ? '…' : s.error ? '—' : val.toLocaleString('en-IN')}
+                <small>{s.error ? 'could not load' : s.unit[val === 1 ? 0 : 1]}</small>
+                {!s.error && !s.loading && val === maxN && val > 0 && <em>Busiest</em>}
+              </div>
+              <div className="ft-bar"><i /></div>
+              <div className="ft-f">Click to open report<ArrowUpRight size={12} /></div>
+            </div>
+          );
+        })()}
       </div>
 
+      {/* one card per station in line order (opens the module's report), then trucks */}
       <div className="fl-stats">
-        <div className="fs" style={{ '--c': v('--gold') }}>
-          <span className="fs-ic"><Cookie size={21} strokeWidth={2.1} /></span>
-          <div className="fs-tx"><span>Discs pressed today</span><b ref={discEl}>18,420</b></div>
-        </div>
-        <div className="fs" style={{ '--c': v('--toast') }}>
-          <span className="fs-ic"><Package size={21} strokeWidth={2.1} /></span>
-          <div className="fs-tx"><span>Cartons packed</span><b ref={cartonEl}>1,540</b></div>
-        </div>
-        <div className="fs" style={{ '--c': v('--leaf'), '--w': `${m.eff || 94.2}%` }}>
-          <span className="fs-ic"><Gauge size={21} strokeWidth={2.1} /></span>
+        {FL_STAGES.map(([n, name, , key]) => {
+          const s = flow.stations[key]; const val = s.data[pk]; const [Ic, c] = FL_CARD[key];
+          const isOrder = key === 'order';
+          return (
+            <a key={n} className={`fs ${s.error ? 'off' : ''}`} href={zoho(s.report)} target="_blank" rel="noopener noreferrer"
+              style={{ '--c': v(s.error ? '--chilli' : c), '--w': `${isOrder ? fulfilPct : (val / maxN) * 100}%` }}
+              title={isOrder ? 'Bar = Shipped + Completed orders out of all confirmed orders' : `Open ${s.unit[1]}`}>
+              <span className="fs-ic"><Ic size={21} strokeWidth={2.1} /></span>
+              <div className="fs-tx">
+                <span><em>{n}</em>{name}</span>
+                <b>{s.loading ? '…' : s.error ? '—' : val.toLocaleString('en-IN')}
+                  <small>{s.error ? 'could not load' : isOrder && !s.loading ? `${s.unit[val === 1 ? 0 : 1]} · ${fulfilPct}% fulfilled` : s.unit[val === 1 ? 0 : 1]}</small></b>
+                <div className="fs-meter"><i /></div>
+              </div>
+              <ArrowUpRight className="fs-go" size={14} />
+            </a>
+          );
+        })}
+        <a className="fs" href={zoho(DISPATCHES.report)} target="_blank" rel="noopener noreferrer" style={{ '--c': v('--volt'), '--w': `${(flow.trucks[pk] / Math.max(1, flow.trucks.year)) * 100}%` }} title="Open daily dispatches">
+          <span className="fs-ic"><Truck size={21} strokeWidth={2.1} /></span>
           <div className="fs-tx">
-            <span>Line efficiency</span><b>{m.eff || '94.2'}%</b>
+            <span>Trucks dispatched</span>
+            <b>{fmt(flow.trucks[pk])}<small>{flow.trucks[pk] === 1 ? 'truck' : 'trucks'}</small></b>
             <div className="fs-meter"><i /></div>
           </div>
-        </div>
-        <div className="fs" style={{ '--c': v('--volt') }}>
-          <span className="fs-ic"><Truck size={21} strokeWidth={2.1} /></span>
-          <div className="fs-tx"><span>Trucks dispatched</span><b ref={truckEl}>6</b></div>
-        </div>
+          <ArrowUpRight className="fs-go" size={14} />
+        </a>
       </div>
     </Card>
   );

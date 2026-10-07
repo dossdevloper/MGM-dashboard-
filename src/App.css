@@ -461,3 +461,46 @@ td.id{color:var(--muted);font-size:11.5px}td.num,th.num{text-align:right;font-we
 }
 
 .iv-empty{padding:18px;text-align:center;font:500 12px 'Poppins',var(--f-ui);color:var(--w-sub);border:1px dashed var(--w-line);border-radius:12px}
+
+/* factory line cards are links */
+a.fs{text-decoration:none;color:inherit;transition:border-color .2s,transform .2s}
+a.fs:hover{transform:translateY(-2px)}
+.fl-stats .fs-tx > span em{font:800 10px var(--f-num);font-style:normal;color:var(--c);margin-right:6px}
+.fl-stats .fs-tx > b small{margin-left:6px;font:500 11px var(--f-ui);color:var(--muted);letter-spacing:0}
+.fl-stats .fs-go{position:absolute;top:10px;right:10px;color:var(--muted);opacity:0;transition:opacity .2s}
+.fl-stats .fs:hover .fs-go{opacity:1}
+.fl-stats .fs.off{opacity:.75}
+.fl-stats .fs.off .fs-tx > b{color:var(--muted)}
+
+/* factory line: hover zone + tooltip */
+.fl-stage.hovering{cursor:pointer}
+.fl-svg .fl-zone{fill:color-mix(in srgb,var(--gold) 9%,transparent);stroke:color-mix(in srgb,var(--gold) 45%,transparent);stroke-dasharray:5 5;pointer-events:none}
+.fl-svg .fl-node.on{fill:var(--chilli);stroke:color-mix(in srgb,var(--chilli) 30%,transparent)}
+.fl-tip{--c:var(--gold);position:absolute;top:62px;z-index:4;width:224px;pointer-events:none;padding:12px 14px;border-radius:14px;
+  background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  border:1px solid color-mix(in srgb,var(--c) 35%,var(--line));box-shadow:0 14px 34px rgba(0,0,0,.16),0 0 0 4px color-mix(in srgb,var(--c) 8%,transparent);
+  animation:ftIn .18s ease-out}
+@keyframes ftIn{from{opacity:0;margin-top:6px}to{opacity:1;margin-top:0}}
+.fl-tip .ft-h{display:flex;align-items:center;gap:6px;font:700 10px var(--f-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--text)}
+.fl-tip .ft-no{font:800 10px var(--f-num);color:#fff;background:var(--c);border-radius:6px;padding:2px 6px;letter-spacing:.04em}
+.fl-tip .ft-per{margin-left:auto;font:600 9.5px var(--f-ui);letter-spacing:.02em;text-transform:none;color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent);padding:2px 7px;border-radius:99px}
+.fl-tip .ft-m{display:flex;align-items:center;gap:10px;margin-top:10px}
+.fl-tip .ft-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none;color:var(--c);background:color-mix(in srgb,var(--c) 15%,transparent)}
+.fl-tip .ft-m b{display:block;font:600 13px var(--f-ui);color:var(--text)}
+.fl-tip .ft-m code{display:block;font:500 10px ui-monospace,Consolas,monospace;color:var(--muted);margin-top:1px}
+.fl-tip .ft-v{display:flex;align-items:baseline;gap:6px;margin-top:10px;font:700 26px/1 var(--f-num);color:var(--text);font-variant-numeric:tabular-nums}
+.fl-tip .ft-v small{font:500 11px var(--f-ui);color:var(--muted)}
+.fl-tip .ft-v em{margin-left:auto;align-self:center;font:700 9.5px var(--f-ui);font-style:normal;color:var(--chilli);background:color-mix(in srgb,var(--chilli) 12%,transparent);padding:2px 7px;border-radius:99px}
+.fl-tip .ft-bar{height:4px;margin-top:8px;border-radius:99px;background:color-mix(in srgb,var(--c) 16%,transparent);overflow:hidden}
+.fl-tip .ft-bar i{display:block;height:100%;width:var(--w,0%);border-radius:99px;background:var(--c);transition:width .4s}
+.fl-tip .ft-f{display:flex;align-items:center;gap:4px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);font:600 10px var(--f-ui);color:var(--c)}
+.fl-svg .fl-motor{cursor:default}
+.fl-svg .fl-lbl{fill:#fff;opacity:.92}
+/* the line's stop button pauses machine animations, not the hover tooltip */
+.fl-stage.paused .fl-tip{animation-play-state:running!important}
+/* truck driver */
+.fl-svg .fl-drv-skin{fill:#E9B98F}
+.fl-svg .fl-drv-cap{fill:#2F5DA8}
+.fl-svg .fl-drv-shirt{fill:#2F5DA8}
+.fl-svg .fl-drv-arm{fill:none;stroke:#2F5DA8;stroke-width:2.2;stroke-linecap:round}
+.fl-svg .fl-drv-wheel{stroke:#26262c;stroke-width:1.8;stroke-linecap:round}
