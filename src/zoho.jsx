@@ -378,55 +378,48 @@ const countToday = (cfg) => (records) => {
 };
 
 /* ============ Factory line ============
-   Counts per period (today / month / FY year) for every FLOW station, plus
-   sales-order fulfilment (Shipped + Completed vs all non-draft, non-cancelled orders)
+   Each station keeps the day (midnight ms) of every record, so counts can be taken for
+   today / this month / this FY year or any custom [from, to] range.
+   Also sales-order fulfilment (Shipped + Completed vs all non-draft, non-cancelled orders)
    and trucks from Daily Dispatches. */
 const periodStarts = () => {
   const now = new Date(); const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const fy = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
   return { today, month: new Date(today.getFullYear(), today.getMonth(), 1), year: new Date(fy, 3, 1) };
 };
-const periodsOf = (d, p) => (!d || d > p.today ? [] : ['today', 'month', 'year'].filter((k) => d >= p[k]));
 const dateOf = (r, field) => {
   const own = toDate(r[field]);
   if (own) return own;
   const k = Object.keys(r).find((x) => /date/i.test(x) && toDate(r[x]));
   return k ? toDate(r[k]) : toDate(r.Added_Time);
 };
-const zeroP = () => ({ today: 0, month: 0, year: 0 });
-const countByPeriod = (field) => (records) => {
-  const p = periodStarts(); const out = zeroP();
-  records.forEach((r) => periodsOf(dateOf(r, field), p).forEach((k) => { out[k] += 1; }));
-  return out;
-};
+const daysOf = (field) => (records) => records.map((r) => dateOf(r, field)).filter(Boolean).map((d) => +d);
 
-const SAMPLE_FLOW = {
-  quote: { today: 6, month: 48, year: 342 }, order: { today: 4, month: 37, year: 518 }, stock: { today: 2, month: 21, year: 156 },
-  assign: { today: 3, month: 29, year: 301 }, weigh: { today: 5, month: 64, year: 198 }, pack: { today: 3, month: 31, year: 289 },
-  ship: { today: 2, month: 26, year: 251 },
-};
+// sample data: `n` events spread over the last ~400 days, denser recently
+function sampleDays(n, seed) {
+  let s = seed; const r = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+  const t = periodStarts().today;
+  return Array.from({ length: n }, () => +new Date(t.getFullYear(), t.getMonth(), t.getDate() - Math.floor(r() ** 1.6 * 400)));
+}
+const SAMPLE_FLOW = { quote: 420, order: 600, stock: 190, assign: 360, weigh: 240, pack: 350, ship: 300 };
 
-export function useFactoryFlow() {
+export function useFactoryFlow(custom) {
   // FLOW is a fixed list, so these hooks are always called in the same order
-  const st = FLOW.map((f) => useZohoReport(f.report, countByPeriod(f.date), SAMPLE_FLOW[f.key], zeroP())); // eslint-disable-line react-hooks/rules-of-hooks
+  const st = FLOW.map((f, i) => useZohoReport(f.report, daysOf(f.date), sampleDays(SAMPLE_FLOW[f.key], 11 + i), [])); // eslint-disable-line react-hooks/rules-of-hooks
+  const so = useZohoReport(SALES_ORDER.report, (records) => records.flatMap((r) => {
+    const s = String(valueOf(r[SALES_ORDER.fields.status])).trim().toLowerCase();
+    const d = dateOf(r, SALES_ORDER.fields.date);
+    return !s || s === 'draft' || s === 'cancelled' || !d ? [] : [[+d, s === 'shipped' || s === 'completed']];
+  }), sampleDays(560, 7).map((d, i) => [d, i % 10 !== 0]), []);
+  const trucks = useZohoReport(DISPATCHES.report, daysOf(DISPATCHES.fields.date), sampleDays(260, 5), []);
 
-  const so = useZohoReport(SALES_ORDER.report, (records) => {
-    const p = periodStarts(); const done = zeroP(); const all = zeroP();
-    records.forEach((r) => {
-      const s = String(valueOf(r[SALES_ORDER.fields.status])).trim().toLowerCase();
-      if (!s || s === 'draft' || s === 'cancelled') return;
-      periodsOf(dateOf(r, SALES_ORDER.fields.date), p).forEach((k) => {
-        all[k] += 1; if (s === 'shipped' || s === 'completed') done[k] += 1;
-      });
-    });
-    return { done, all };
-  }, { done: { today: 3, month: 30, year: 437 }, all: { today: 4, month: 34, year: 480 } }, { done: zeroP(), all: zeroP() });
-
-  const trucks = useZohoReport(DISPATCHES.report, countByPeriod(DISPATCHES.fields.date), { today: 6, month: 71, year: 214 }, zeroP());
-
+  const p = periodStarts(); const t = +p.today;
+  const ranges = { today: [t, t], month: [+p.month, t], year: [+p.year, t], custom: custom ? [+custom[0], +custom[1]] : [t, t] };
+  const count = (days, keep = () => true) => Object.fromEntries(Object.entries(ranges).map(([k, [a, b]]) => [k, days.filter((x) => { const d = Array.isArray(x) ? x[0] : x; return d >= a && d <= b && keep(x); }).length]));
   return {
-    stations: Object.fromEntries(FLOW.map((f, i) => [f.key, { ...st[i], unit: f.unit, report: f.report }])),
-    fulfil: so.data, trucks: trucks.data,
+    stations: Object.fromEntries(FLOW.map((f, i) => [f.key, { ...st[i], data: count(st[i].data), unit: f.unit, report: f.report }])),
+    fulfil: { done: count(so.data, (x) => x[1]), all: count(so.data) },
+    trucks: count(trucks.data),
     loading: st.some((x) => x.loading) || so.loading || trucks.loading,
   };
 }
@@ -560,6 +553,7 @@ export function useSalesFunnel() {
       add('invoice', d); add('value', d, amt);
       if (st === 'paid') { add('paid', d); add('paidValue', d, amt); }
     });
+    ['value', 'paidValue'].forEach((k) => { out[k].month = Math.round(out[k].month); out[k].year = Math.round(out[k].year); });
     out.missing = { quote: qs === null, order: sos === null, invoice: invs === null };
     return out;
   }, {

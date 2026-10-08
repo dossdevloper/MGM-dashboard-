@@ -28,14 +28,22 @@ a{color:inherit;text-decoration:none}
 ::selection{background:var(--gold);color:#18181B}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
-/* ===== scrollbar ===== */
-html,*{scrollbar-width:thin;scrollbar-color:var(--sb-thumb) transparent}
-::-webkit-scrollbar{width:var(--sb-size);height:var(--sb-size)}
-::-webkit-scrollbar-track{background:transparent;margin:6px 0}
-::-webkit-scrollbar-thumb{background:var(--sb-thumb);border-radius:99px;border:2px solid transparent;background-clip:padding-box}
-::-webkit-scrollbar-thumb:hover{background:var(--gold);border:2px solid transparent;background-clip:padding-box}
-::-webkit-scrollbar-thumb:active{background:var(--chilli);border:2px solid transparent;background-clip:padding-box}
+/* ===== scrollbar: glowing gold -> teal capsule on a cream rail ===== */
+/* Firefox only: in Chromium the standard properties would override the custom ::-webkit styling below */
+@supports (-moz-appearance:none){html,*{scrollbar-width:thin;scrollbar-color:#E8A317 #FBF3E6}}
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-button{display:none;width:0;height:0}
+::-webkit-scrollbar-track{margin:6px 0;border-radius:99px;
+  background:linear-gradient(90deg,transparent 4px,rgba(14,151,176,.16) 4px 7px,transparent 7px),#FBF3E6;
+  box-shadow:inset 0 0 0 1px #F3E4CC}
+::-webkit-scrollbar-thumb{border-radius:99px;border:2px solid transparent;background-clip:padding-box;
+  background-image:linear-gradient(180deg,#F4C14A 0%,#E07B39 50%,#0E97B0 100%);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.55),inset 0 6px 8px -4px rgba(255,255,255,.7)}
+::-webkit-scrollbar-thumb:hover{background-image:linear-gradient(180deg,#FFD15C 0%,#F08A45 50%,#16B4D0 100%);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.75),inset 0 6px 8px -4px rgba(255,255,255,.85),0 0 10px rgba(14,151,176,.55)}
+::-webkit-scrollbar-thumb:active{background-image:linear-gradient(180deg,#0E97B0,#16B4D0)}
 ::-webkit-scrollbar-corner{background:transparent}
+:root[data-theme="dark"] ::-webkit-scrollbar-track{background:linear-gradient(90deg,transparent 4px,rgba(60,200,224,.18) 4px 7px,transparent 7px),#221A13;box-shadow:inset 0 0 0 1px #3A2E22}
 
 /* ===== top bar ===== */
 .main{max-width:none;width:100%;margin:0;padding:0 24px 32px}.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;display:flex;align-items:center;gap:8px;
@@ -823,3 +831,68 @@ body{background:
 .grid > .card{background-color:rgba(255,255,255,.80)!important;-webkit-backdrop-filter:blur(7px) saturate(1.1);backdrop-filter:blur(7px) saturate(1.1)}
 :root[data-theme="dark"] .grid > .card{background-color:rgba(23,23,26,.78)!important}
 .top{-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+
+/* PC view: larger, centred donuts with balanced columns */
+@media (min-width:1100px){
+  .warm .donut{width:200px;height:200px}
+  .warm .donut-c b{font-size:30px}
+  .warm .donut-c span{font-size:12px}
+  .wm-body{display:grid;grid-template-columns:minmax(240px,.85fr) minmax(0,1.15fr);align-items:center;gap:28px;padding:6px 0 8px}
+  .wm-body > .donut{justify-self:center}
+  .wm-list{max-width:none;margin-left:0;min-width:0}
+  .iv-donut{margin:8px 0 22px}
+}
+@media (min-width:1600px){
+  .warm .donut{width:215px;height:215px}
+}
+.fn-f div{min-width:0}.fn-f b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* factory line: custom date-range picker */
+.drp{position:relative}
+.drp-btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:8px;cursor:pointer;
+  font:600 11px 'Space Grotesk',var(--f-ui);color:#8A6440;background:#FFFBF5;border:1px solid #F3E4CC;transition:color .2s,background .2s,border-color .2s,box-shadow .2s}
+.drp-btn svg{color:#0E97B0}
+.drp-btn:hover,.drp-btn.open{color:#0E97B0;border-color:color-mix(in srgb,#0E97B0 40%,#F3E4CC)}
+.drp-btn.on{color:#0E97B0;background:color-mix(in srgb,#0E97B0 14%,#fff);border-color:color-mix(in srgb,#0E97B0 35%,transparent)}
+.drp-caret{transition:transform .2s}
+.drp-btn.open .drp-caret{transform:rotate(180deg)}
+.drp-pop{position:absolute;top:calc(100% + 10px);right:0;z-index:30;display:grid;grid-template-columns:132px 268px;border-radius:16px;overflow:hidden;
+  background:#fff;border:1px solid color-mix(in srgb,#0E97B0 28%,#F1DDBF);box-shadow:0 24px 50px -20px rgba(122,74,30,.4),0 0 0 4px color-mix(in srgb,#0E97B0 7%,transparent);
+  animation:ftIn .16s ease-out;font-family:'Space Grotesk',var(--f-ui);color:#2B1608}
+.drp-pre{display:flex;flex-direction:column;gap:4px;padding:12px 10px;background:#FFFBF5;border-right:1px solid #F3E4CC}
+.drp-pre small{padding:2px 8px 6px;font:600 9.5px 'Space Grotesk',var(--f-ui);letter-spacing:.12em;text-transform:uppercase;color:#8A6440}
+.drp-pre button{text-align:left;padding:7px 9px;border:0;border-radius:9px;background:transparent;cursor:pointer;font:600 11.5px 'Space Grotesk',var(--f-ui);color:#2B1608;transition:background .15s,color .15s}
+.drp-pre button:hover{background:color-mix(in srgb,#0E97B0 10%,transparent);color:#0E97B0}
+.drp-pre button.on{background:#0E97B0;color:#fff}
+.drp-cal{padding:12px}
+.drp-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.drp-h b{font:700 13px 'Space Grotesk',var(--f-ui)}
+.drp-h button{width:28px;height:28px;display:grid;place-items:center;border:1px solid #F3E4CC;border-radius:9px;background:#FFFBF5;color:#2B1608;cursor:pointer}
+.drp-h button:hover:not(:disabled){color:#0E97B0;border-color:color-mix(in srgb,#0E97B0 40%,#F3E4CC)}
+.drp-h button:disabled{opacity:.3;cursor:default}
+.drp-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px 0}
+.drp-wd{text-align:center;padding:4px 0;font:600 9.5px 'Space Grotesk',var(--f-ui);color:#8A6440}
+.drp-grid button{height:32px;border:0;background:transparent;cursor:pointer;font:600 11.5px 'Space Grotesk',var(--f-ui);color:#2B1608;border-radius:9px;transition:background .12s}
+.drp-grid button:hover:not(:disabled){background:color-mix(in srgb,#0E97B0 12%,transparent)}
+.drp-grid button:disabled{color:#d6c7b4;cursor:default}
+.drp-grid button.now{box-shadow:inset 0 0 0 1.5px #E8A317}
+.drp-grid button.in{background:color-mix(in srgb,#0E97B0 13%,transparent);border-radius:0;color:#0B6F82}
+.drp-grid button.a,.drp-grid button.b{background:#0E97B0;color:#fff;box-shadow:0 6px 14px -8px #0E97B0}
+.drp-grid button.a:not(.b){border-radius:9px 0 0 9px}.drp-grid button.b:not(.a){border-radius:0 9px 9px 0}
+.drp-f{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:10px;border-top:1px dashed #F3E4CC;font-size:11px;color:#8A6440}
+.drp-f b{color:#2B1608}
+.drp-f em{display:block;font-style:normal;font-size:10px;margin-top:2px}
+.drp-f div{display:flex;gap:6px;flex:none}
+.drp-f button{padding:6px 12px;border-radius:9px;cursor:pointer;font:600 11px 'Space Grotesk',var(--f-ui)}
+.drp-f .ghost{border:1px solid #F3E4CC;background:#fff;color:#8A6440}
+.drp-f .go{border:0;background:#0E97B0;color:#fff;box-shadow:0 6px 14px -8px #0E97B0}
+.drp-f .go:disabled{opacity:.4;cursor:default}
+:root[data-theme="dark"] .drp-btn{background:rgba(255,255,255,.03);border-color:#3A2E22;color:#C9A784}
+:root[data-theme="dark"] .drp-pop{background:#1A140F;color:#F6E7D3;border-color:#3A2E22}
+:root[data-theme="dark"] .drp-pre{background:#221a13;border-color:#3A2E22}
+:root[data-theme="dark"] .drp-pre button,:root[data-theme="dark"] .drp-grid button,:root[data-theme="dark"] .drp-h b,:root[data-theme="dark"] .drp-f b{color:#F6E7D3}
+:root[data-theme="dark"] .drp-h button,:root[data-theme="dark"] .drp-f .ghost{background:transparent;border-color:#3A2E22;color:#F6E7D3}
+:root[data-theme="dark"] .drp-grid button:disabled{color:#5a4a3a}
+@media (max-width:560px){.drp-pop{grid-template-columns:1fr;right:-8px}.drp-pre{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid #F3E4CC}.drp-pre small{width:100%}}
+.drp-grid button.a:hover:not(:disabled),.drp-grid button.b:hover:not(:disabled){background:#0E97B0;color:#fff}
+.drp-grid button.in:hover:not(:disabled){background:color-mix(in srgb,#0E97B0 22%,transparent)}
