@@ -1489,6 +1489,97 @@ function MasterRecords() {
   );
 }
 
+/* ============ Background: drifting appalams with a futuristic constellation ============ */
+function AppalamBackdrop({ theme }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const cv = ref.current; if (!cv) return undefined;
+    const ctx = cv.getContext('2d');
+    const dark = theme === 'dark';
+    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    let W = 0, H = 0, raf = 0;
+    const r = rng(23);
+    // depth 0 (far, small, faint) .. 1 (near, large, brighter)
+    const discs = Array.from({ length: 18 }, () => {
+      const z = r();
+      const R = 18 + z * 62;
+      return {
+        x: r(), y: r(), z, R, a: r() * Math.PI * 2,
+        spin: (r() - 0.5) * 0.004 * (1.2 - z), vy: -(0.04 + z * 0.12), sway: r() * Math.PI * 2,
+        orbit: r() < 0.45, pores: Array.from({ length: 16 }, () => { const t = r() * Math.PI * 2; const d = 0.15 + r() * 0.65; return [Math.cos(t) * d, Math.sin(t) * d, 0.025 + r() * 0.03]; }),
+      };
+    });
+    const resize = () => {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      W = window.innerWidth; H = window.innerHeight;
+      cv.width = W * dpr; cv.height = H * dpr; cv.style.width = `${W}px`; cv.style.height = `${H}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    const teal = dark ? [60, 200, 224] : [14, 151, 176];
+    const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+    const drawDisc = (d, px, py, t) => {
+      const alpha = (dark ? 0.16 : 0.2) + d.z * (dark ? 0.22 : 0.26);
+      ctx.save(); ctx.translate(px, py); ctx.rotate(d.a); ctx.globalAlpha = alpha;
+      // golden appalam body
+      const g = ctx.createRadialGradient(-d.R * 0.3, -d.R * 0.3, d.R * 0.1, 0, 0, d.R);
+      g.addColorStop(0, '#FFF1C6'); g.addColorStop(0.6, '#F7D27A'); g.addColorStop(1, '#D9A13A');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, d.R, 0, Math.PI * 2); ctx.fill();
+      // blistered pores
+      ctx.fillStyle = '#B8782A';
+      d.pores.forEach(([x, y, s]) => { ctx.beginPath(); ctx.arc(x * d.R, y * d.R, s * d.R, 0, Math.PI * 2); ctx.fill(); });
+      // dashed inner ring
+      ctx.setLineDash([3, 5]); ctx.strokeStyle = 'rgba(122,74,14,.55)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(0, 0, d.R * 0.82, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.restore();
+      // futuristic orbit: thin ring + a travelling glow arc
+      if (d.orbit) {
+        ctx.save(); ctx.translate(px, py); ctx.globalAlpha = 0.25 + d.z * 0.35;
+        ctx.strokeStyle = rgba(teal, 0.45); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(0, 0, d.R * 1.35, 0, Math.PI * 2); ctx.stroke();
+        const s = t * 0.0009 * (1 + d.z) + d.sway;
+        ctx.strokeStyle = rgba(teal, 0.9); ctx.lineWidth = 2; ctx.shadowColor = rgba(teal, 0.9); ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.arc(0, 0, d.R * 1.35, s, s + 0.9); ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(Math.cos(s + 0.9) * d.R * 1.35, Math.sin(s + 0.9) * d.R * 1.35, 2.2, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    };
+
+    let last = 0;
+    const frame = (t) => {
+      // ~30fps is plenty for a slow backdrop and keeps the frosted cards cheap to repaint
+      if (!still && t - last < 33) { raf = requestAnimationFrame(frame); return; }
+      last = t;
+      ctx.clearRect(0, 0, W, H);
+      const pts = discs.map((d) => {
+        if (!still) {
+          d.y += (d.vy / H) * 2.4; d.a += d.spin * 2;
+          if (d.y < -0.15) { d.y = 1.15; d.x = r(); }
+        }
+        return [d.x * W + Math.sin(t * 0.0003 + d.sway) * 24 * (0.4 + d.z), d.y * H, d];
+      });
+      // constellation lines between near neighbours
+      ctx.lineWidth = 1;
+      for (let i = 0; i < pts.length; i++) {
+        for (let j = i + 1; j < pts.length; j++) {
+          const dx = pts[i][0] - pts[j][0], dy = pts[i][1] - pts[j][1]; const dist = Math.hypot(dx, dy);
+          if (dist < 260) {
+            ctx.strokeStyle = rgba(teal, (1 - dist / 260) * (dark ? 0.22 : 0.16));
+            ctx.beginPath(); ctx.moveTo(pts[i][0], pts[i][1]); ctx.lineTo(pts[j][0], pts[j][1]); ctx.stroke();
+          }
+        }
+      }
+      // far discs first so near ones sit on top
+      pts.sort((a, b) => a[2].z - b[2].z).forEach(([x, y, d]) => drawDisc(d, x, y, t));
+      if (!still) raf = requestAnimationFrame(frame);
+    };
+    resize(); window.addEventListener('resize', resize);
+    raf = requestAnimationFrame(frame);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); };
+  }, [theme]);
+  return <canvas ref={ref} className="bg-appalam" aria-hidden="true" />;
+}
+
 /* ============ App ============ */
 export default function App() {
   const [loading, setLoading] = useState(true); const [ready, setReady] = useState(false);
@@ -1523,6 +1614,7 @@ export default function App() {
 
   return (
     <Ready.Provider value={ready}>
+      <AppalamBackdrop theme={theme} />
       <div ref={shell} className="main">
         <header className="top">
           <div className="brand">
@@ -1558,7 +1650,7 @@ export default function App() {
           <Invoices />
           <CashRadar /><SalesFunnel />
           <TopCustomers /><BusinessPulse />
-          <MasterRecords />
+          {/* <MasterRecords /> */}
           {/* <Dispatches /> */}
         </div>
         <div className="note">Sample data shown. Connect to Zoho Creator to see live records.</div>

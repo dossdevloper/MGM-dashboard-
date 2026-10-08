@@ -38,8 +38,7 @@ html,*{scrollbar-width:thin;scrollbar-color:var(--sb-thumb) transparent}
 ::-webkit-scrollbar-corner{background:transparent}
 
 /* ===== top bar ===== */
-.main{max-width:1200px;width:100%;margin:0 auto;padding:0 20px 32px}
-.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;display:flex;align-items:center;gap:8px;
+.main{max-width:none;width:100%;margin:0;padding:0 24px 32px}.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;display:flex;align-items:center;gap:8px;
   margin:0 calc(50% - 50vw) 14px;padding:8px calc(50vw - 50%);
   background:color-mix(in srgb,var(--card) 92%,transparent);
   -webkit-backdrop-filter:blur(14px) saturate(1.5);backdrop-filter:blur(14px) saturate(1.5);
@@ -811,3 +810,16 @@ a.fs:hover{transform:translateY(-2px)}
 .grid > .card:hover::after{transform:scaleX(1);opacity:1}
 :root[data-theme="dark"] .grid > .card:hover{border-color:color-mix(in srgb,#F2B33D 45%,#3A2E22);box-shadow:0 24px 48px -24px rgba(0,0,0,.7),0 0 0 1px rgba(242,179,61,.18)}
 @media (prefers-reduced-motion:reduce){.grid > .card:hover{transform:none}.grid > .card::after{transition:none}}
+
+
+/* animated appalam backdrop (behind everything) */
+.bg-appalam{position:fixed;inset:0;z-index:0;pointer-events:none;display:block}
+body{background:
+  radial-gradient(70vmax 50vmax at 0% 0%,rgba(232,163,23,.10),transparent 60%),
+  radial-gradient(60vmax 45vmax at 100% 100%,rgba(14,151,176,.08),transparent 60%),
+  var(--bg);background-attachment:fixed}
+.main{position:relative;z-index:1}
+/* frosted cards so the appalam backdrop glows through */
+.grid > .card{background-color:rgba(255,255,255,.80)!important;-webkit-backdrop-filter:blur(7px) saturate(1.1);backdrop-filter:blur(7px) saturate(1.1)}
+:root[data-theme="dark"] .grid > .card{background-color:rgba(23,23,26,.78)!important}
+.top{-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
