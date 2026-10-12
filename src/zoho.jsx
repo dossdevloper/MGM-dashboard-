@@ -19,6 +19,8 @@ export const SALES_ORDER = {
   statuses: [
     ['Draft', '--w-tan'],
     ['Confirmed', '--w-blue'],
+    ['Packed', '--w-purple'],
+    ['Dispatched', '--w-orange'],
     ['Shipped', '--w-gold'],
     ['Cancelled', '--w-red'],
     ['Completed', '--w-green'],
@@ -85,7 +87,7 @@ export const FLOW = [
 ];
 
 // Shown when running outside Zoho Creator (local `npm run dev`)
-const SAMPLE_SO_COUNTS = { Draft: 96, Confirmed: 214, Shipped: 132, Cancelled: 38, Completed: 405 };
+const SAMPLE_SO_COUNTS = { Draft: 96, Confirmed: 214, Packed: 58, Dispatched: 74, Shipped: 132, Cancelled: 38, Completed: 405 };
 const SAMPLE_PAYMENTS = {
   months: [182000, 214500, 196800, 238200, 221400, 264900, 226100, 0, 0, 0, 0, 0], // Apr..Mar
   today: { amt: 18400, n: 3 }, week: { amt: 142300, n: 9 },
@@ -380,7 +382,7 @@ const countToday = (cfg) => (records) => {
 /* ============ Factory line ============
    Each station keeps the day (midnight ms) of every record, so counts can be taken for
    today / this month / this FY year or any custom [from, to] range.
-   Also sales-order fulfilment (Shipped + Completed vs all non-draft, non-cancelled orders)
+   Also sales-order fulfilment (Dispatched + Shipped + Completed vs all non-draft, non-cancelled orders)
    and trucks from Daily Dispatches. */
 const periodStarts = () => {
   const now = new Date(); const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -409,7 +411,7 @@ export function useFactoryFlow(custom) {
   const so = useZohoReport(SALES_ORDER.report, (records) => records.flatMap((r) => {
     const s = String(valueOf(r[SALES_ORDER.fields.status])).trim().toLowerCase();
     const d = dateOf(r, SALES_ORDER.fields.date);
-    return !s || s === 'draft' || s === 'cancelled' || !d ? [] : [[+d, s === 'shipped' || s === 'completed']];
+    return !s || s === 'draft' || s === 'cancelled' || !d ? [] : [[+d, s === 'dispatched' || s === 'shipped' || s === 'completed']];
   }), sampleDays(560, 7).map((d, i) => [d, i % 10 !== 0]), []);
   const trucks = useZohoReport(DISPATCHES.report, daysOf(DISPATCHES.fields.date), sampleDays(260, 5), []);
 
