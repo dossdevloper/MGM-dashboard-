@@ -21,7 +21,11 @@
   border:1px solid color-mix(in srgb,var(--sk-orange) 28%,transparent);box-shadow:0 6px 16px -8px var(--sk-orange)}
 .sk-h h3{margin:0;font:600 17px/1.2 'Space Grotesk',var(--f-ui);color:var(--sk-ink)}
 .sk-h p{margin:3px 0 0;font-size:11px;color:var(--sk-sub)}
-.sk-hr{display:flex;align-items:center;gap:8px}
+.sk-hr{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+.sk-live{flex:none;display:inline-flex;align-items:center;gap:7px;margin-right:4px;font:600 11px 'Space Grotesk',var(--f-ui);color:var(--sk-green);white-space:nowrap;cursor:help}
+.sk-live i{width:7px;height:7px;border-radius:50%;background:var(--sk-green);animation:pulse 2.4s infinite}
+.sk-live.wait{color:var(--sk-sub)}.sk-live.wait i{background:var(--sk-gold)}
+.sk-live.off{color:var(--sk-sub)}.sk-live.off i{background:var(--sk-sub);opacity:.6;animation:none}
 .sk-seg{display:inline-flex;padding:2px;border-radius:8px;background:var(--sk-glass);border:1px solid var(--sk-line)}
 .sk-seg button{padding:4px 10px;border:0;border-radius:6px;background:transparent;cursor:pointer;font:600 11px 'Space Grotesk',var(--f-ui);color:var(--sk-sub);transition:all .15s}
 .sk-seg button:hover:not(.on){color:var(--sk-teal)}
@@ -271,9 +275,11 @@
 .sl-cr{fill:color-mix(in srgb,var(--cc,var(--sk-gold)) 26%,var(--sk-glass));stroke:var(--cc,var(--sk-gold));stroke-width:1.6;
   filter:drop-shadow(0 0 4px color-mix(in srgb,var(--cc,var(--sk-gold)) 55%,transparent))}
 .sl-cr-l{fill:none;stroke:var(--cc,var(--sk-gold));stroke-width:1.2;opacity:.75}
+.sl-cr-tag{fill:#fff;opacity:.92;stroke:color-mix(in srgb,var(--cc,var(--sk-gold)) 35%,transparent);stroke-width:.6}
+.sl-cr-txt{font:800 5.5px 'Space Grotesk',var(--f-ui);fill:#D9372B;letter-spacing:.04em}
 .sl-tbed{fill:color-mix(in srgb,var(--cc) 8%,transparent);stroke:var(--cc);stroke-width:1.6}
 .sl-tcab{fill:color-mix(in srgb,var(--cc) 20%,var(--sk-glass));stroke:var(--cc);stroke-width:1.6}
-.sl-twin{fill:color-mix(in srgb,var(--sk-teal) 25%,transparent);stroke:var(--cc);stroke-width:1}
+.sl-twin{fill:color-mix(in srgb,var(--sk-teal) 16%,transparent);stroke:var(--cc);stroke-width:1}
 .sl-tchas{fill:var(--sk-sub);opacity:.7}
 .sl-tlight{fill:var(--sk-gold);filter:drop-shadow(0 0 4px var(--sk-gold))}
 .sl-tw .rim{fill:var(--sk-glass);stroke:var(--sk-ink);stroke-width:2.4}
@@ -284,6 +290,24 @@
 .sl-pop.in{fill:var(--sk-green)}
 .sl-pop.out{fill:var(--sk-orange)}
 
+/* truck driver + exhaust */
+.sl-drv-body{fill:color-mix(in srgb,var(--cc) 55%,var(--sk-ink))}
+.sl-drv-face{fill:#E9B98F;stroke:#B07A50;stroke-width:.8}
+.sl-drv-cap{fill:var(--cc)}
+.sl-drv-peak{stroke:var(--cc);stroke-width:1.6;stroke-linecap:round}
+.sl-drv-arm{fill:none;stroke:color-mix(in srgb,var(--cc) 55%,var(--sk-ink));stroke-width:2;stroke-linecap:round}
+.sl-drv-wheel{fill:none;stroke:var(--sk-ink);stroke-width:1.3;opacity:.75}
+.sl-puff{fill:color-mix(in srgb,var(--sk-sub) 35%,#fff);stroke:color-mix(in srgb,var(--sk-sub) 30%,transparent);stroke-width:.6}
+
+/* worker carrying cartons (stock in / stock out) */
+.sl-leg path{fill:none;stroke:var(--sk-ink);stroke-width:3;stroke-linecap:round;opacity:.8}
+.sl-arm path{fill:none;stroke:color-mix(in srgb,var(--sk-ink) 70%,var(--cc));stroke-width:2.6;stroke-linecap:round}
+.sl-man-body{fill:color-mix(in srgb,var(--cc) 30%,var(--sk-glass));stroke:var(--cc);stroke-width:1.4;stroke-linejoin:round}
+.sl-man-vest{stroke:var(--sk-gold);stroke-width:2;opacity:.9}
+.sl-man-head{fill:#E9B98F;stroke:#B07A50;stroke-width:1}
+.sl-man-hat{fill:var(--sk-gold);stroke:color-mix(in srgb,var(--sk-gold) 70%,#7a4a10);stroke-width:.8}
+.sl-man-brim{stroke:color-mix(in srgb,var(--sk-gold) 70%,#7a4a10);stroke-width:1.6;stroke-linecap:round}
+
 /* shared machine bits */
 .sl-body{fill:var(--sk-glass);stroke:var(--sk-sub);stroke-opacity:.6;stroke-width:1.4}
 .sl-screen{fill:#0f2433;stroke:var(--sk-teal);stroke-width:1.4;filter:drop-shadow(0 0 6px color-mix(in srgb,var(--sk-teal) 45%,transparent))}
@@ -292,21 +316,22 @@
 .sl-led{fill:var(--sk-green)}
 .sl-led-v{fill:var(--sk-violet)}
 
-/* 03 balance: stock tank */
-.sl-tank{fill:color-mix(in srgb,var(--sk-teal) 6%,var(--sk-glass));stroke:var(--sk-teal);stroke-width:2;filter:drop-shadow(0 0 6px color-mix(in srgb,var(--sk-teal) 35%,transparent))}
-.sl-liq{fill:color-mix(in srgb,var(--sk-teal) 32%,transparent);stroke:var(--sk-teal);stroke-width:1.4}
-.sl-tick{stroke:var(--sk-teal);stroke-width:1.4;opacity:.55}
-.sl-glint{fill:#fff;opacity:.35}
-.sl-lmark{fill:var(--sk-teal);filter:drop-shadow(0 0 4px var(--sk-teal))}
-.sl-lpct{font:700 10px 'Space Grotesk',var(--f-ui);fill:var(--sk-teal)}
-.sl-splash{fill:none;stroke:var(--sk-teal);stroke-width:2;opacity:0}
-.sl-pipe{stroke-width:1.6}
-.sl-pipe.in{fill:color-mix(in srgb,var(--sk-green) 12%,var(--sk-glass));stroke:color-mix(in srgb,var(--sk-green) 70%,transparent)}
-.sl-pipe.out{fill:color-mix(in srgb,var(--sk-orange) 12%,var(--sk-glass));stroke:color-mix(in srgb,var(--sk-orange) 70%,transparent)}
-.sl-pflow{fill:none;stroke-width:1.6;stroke-dasharray:3 9;opacity:.6;animation:slArc .9s linear infinite}
+/* 03 balance: three-shelf rack (in / balance / out) */
+.sl-bshelf.in{fill:var(--sk-green);opacity:.75}
+.sl-bshelf.mid{fill:var(--sk-teal);filter:drop-shadow(0 0 5px color-mix(in srgb,var(--sk-teal) 55%,transparent))}
+.sl-bshelf.out{fill:var(--sk-orange);opacity:.75}
+.sl-bmid{fill:color-mix(in srgb,var(--sk-teal) 8%,transparent)}
+.sl-bglow{fill:color-mix(in srgb,var(--sk-teal) 28%,transparent)}
+.sl-bempty{fill:none;stroke:var(--sk-teal);stroke-width:1.2;stroke-dasharray:3 3;opacity:.45}
+.sl-lpct{font:700 11px 'Space Grotesk',var(--f-ui);fill:var(--sk-teal)}
+.sl-pflow{fill:none;stroke-width:2;stroke-dasharray:3 7;opacity:.7;animation:slArc .9s linear infinite}
 .sl-pflow.in{stroke:var(--sk-green)}
 .sl-pflow.out{stroke:var(--sk-orange)}
 .sl-ptag{font:700 8.5px 'Space Grotesk',var(--f-ui);letter-spacing:.14em;fill:var(--sk-sub)}
+.sl-ptag.in{fill:var(--sk-green)}
+.sl-ptag.out{fill:var(--sk-orange)}
+.sl-pop.bin{fill:var(--sk-green)}
+.sl-pop.bout{fill:var(--sk-orange)}
 
 /* 04 weight checking */
 .sl-belt{fill:color-mix(in srgb,var(--sk-ink) 78%,transparent)}

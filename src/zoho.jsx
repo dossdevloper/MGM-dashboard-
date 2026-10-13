@@ -65,8 +65,35 @@ export const INVOICES = {
 };
 
 // Today's Highlights: "Deliveries" = dispatches dated today, "New Customers" = customers added today
+// Stock page: stock in = Accepted Quantity on every GRN line item, dated by the GRN date
+export const GRN = {
+  report: 'GRN1',
+  fields: {
+    date: 'GRN_Date',              // date field on the GRN
+    lines: 'GRN_Line_Items',       // subform
+    accepted: 'Accepted_Quantity', // subform field counted as stock in (kg)
+    parent: 'GRN',                    // optional: lookup on GRN Details that points to the GRN (auto-detected if blank)
+  },
+  // report(s) on the GRN Details form (the subform's own form) — the first one that loads is used
+  lineReports: ['GRN_Details1', 'GRN_Details_Report', 'GRN_Details'],
+};
+
+// Stock page: stock out = invoice line items (quantity + kg), dated by the invoice date
+export const STOCK_OUT = {
+  report: 'All_Invoices',          // invoices (for the date + status)
+  date: 'Invoice_Date',
+  status: 'Status',
+  skipStatuses: ['Cancelled'],     // invoices with these statuses are not counted
+  lineReport: 'All_Invoice_Items', // invoice line items (subform's own report)
+  fields: {
+    qty: 'Quantity_Cartons',     // quantity field on a line item — blank = auto-detect (Quantity / Qty …)
+    kg: 'Weight_Kg',      // weight field on a line item — blank = auto-detect (Kg / Weight …)
+    parent: 'Invoice',  // lookup on the line item pointing to the invoice — blank = auto-detect
+  },
+};
+
 export const DISPATCHES = {
-  report: 'All_Daily_Dispatches',
+  report: 'DispatchList',
   fields: { date: 'Dispatch_Date' },
 };
 export const CUSTOMERS = {
@@ -81,8 +108,8 @@ export const FLOW = [
   { key: 'order', report: 'All_Sales_Orders', date: 'SO_date', unit: ['sales order', 'sales orders'] },
   { key: 'stock', report: 'All_Stock_Transfers', date: 'Transfer_Date', unit: ['stock transfer', 'stock transfers'] },
   { key: 'assign', report: 'Packing_Assignments', date: 'Assignment_Date', unit: ['assignment', 'assignments'] },
-  { key: 'weigh', report: 'Daily_Weight_Checking_Report', date: 'Date_field', unit: ['weight check', 'weight checks'] },
-  { key: 'pack', report: 'Packages', date: 'Packing_Date', unit: ['packing list', 'packing lists'] },
+  { key: 'weigh', report: 'WeightChecking', date: 'Date_field', unit: ['weight check', 'weight checks'] },
+  { key: 'pack', report: 'PackingAssignment', date: 'Packing_Date', unit: ['packing list', 'packing lists'] },
   { key: 'ship', report: 'All_Shipments', date: 'Shipment_Date', unit: ['shipment', 'shipments'] },
 ];
 
@@ -540,28 +567,43 @@ export function useTopCustomers(limit = 6) {
 }
 
 /* ============ Sales funnel ============
-   quotations > sales orders > invoices > paid invoices, per period (month / year) */
-const zf = () => ({ month: 0, year: 0 });
+   Keeps every record's day so any range can be counted (This month / This year / Custom):
+   ev = { quote: [dayMs], order: [dayMs], invoice: [[dayMs, amount, paid]] }; use funnelBetween(). */
+const EMPTY_EV = { quote: [], order: [], invoice: [] };
+const sampleFunnel = () => ({
+  quote: sampleDays(420, 51),
+  order: sampleDays(330, 52),
+  invoice: sampleDays(280, 53).map((d, i) => [d, 6000 + ((i * 7919) % 26000), i % 5 !== 0]),
+});
 export function useSalesFunnel() {
   const quote = FLOW.find((f) => f.key === 'quote');
   return useZohoReports([quote.report, SALES_ORDER.report, INVOICES.report], (qs, sos, invs) => {
-    const p = periodStarts(); const out = { quote: zf(), order: zf(), invoice: zf(), paid: zf(), value: zf(), paidValue: zf() };
-    const add = (k, d, n = 1) => ['month', 'year'].forEach((x) => { if (d && d >= p[x] && d <= p.today) out[k][x] += n; });
-    (qs || []).forEach((r) => add('quote', dateOf(r, quote.date)));
-    (sos || []).forEach((r) => { if (lower(r[SALES_ORDER.fields.status]) !== 'cancelled' && valueOf(r[SALES_ORDER.fields.orderNo])) add('order', dateOf(r, SALES_ORDER.fields.date)); });
+    const ev = { quote: [], order: [], invoice: [] };
+    (qs || []).forEach((r) => { const d = dateOf(r, quote.date); if (d) ev.quote.push(+d); });
+    (sos || []).forEach((r) => {
+      if (lower(r[SALES_ORDER.fields.status]) === 'cancelled' || !valueOf(r[SALES_ORDER.fields.orderNo])) return;
+      const d = dateOf(r, SALES_ORDER.fields.date); if (d) ev.order.push(+d);
+    });
     (invs || []).forEach((r) => {
       const st = lower(r[INVOICES.fields.status]); if (st === 'cancelled' || st === 'draft') return;
-      const d = toDate(r[INVOICES.fields.date]); const amt = toNumber(r[INVOICES.fields.amount]);
-      add('invoice', d); add('value', d, amt);
-      if (st === 'paid') { add('paid', d); add('paidValue', d, amt); }
+      const d = toDate(r[INVOICES.fields.date]); if (d) ev.invoice.push([+d, toNumber(r[INVOICES.fields.amount]), st === 'paid']);
     });
-    ['value', 'paidValue'].forEach((k) => { out[k].month = Math.round(out[k].month); out[k].year = Math.round(out[k].year); });
-    out.missing = { quote: qs === null, order: sos === null, invoice: invs === null };
-    return out;
-  }, {
-    quote: { month: 48, year: 342 }, order: { month: 37, year: 270 }, invoice: { month: 31, year: 236 }, paid: { month: 22, year: 189 },
-    value: { month: 411400, year: 1948400 }, paidValue: { month: 288000, year: 1543900 }, missing: {},
-  }, { quote: zf(), order: zf(), invoice: zf(), paid: zf(), value: zf(), paidValue: zf(), missing: {} });
+    return { ev, missing: { quote: qs === null, order: sos === null, invoice: invs === null } };
+  }, { ev: sampleFunnel(), missing: {} }, { ev: EMPTY_EV, missing: {} });
+}
+// funnel counts + invoiced / collected value between two day-starts (inclusive)
+export function funnelBetween(ev, from, to) {
+  const a = +from; const b = +to; const inR = (d) => d >= a && d <= b;
+  const o = { quote: 0, order: 0, invoice: 0, paid: 0, value: 0, paidValue: 0 };
+  ev.quote.forEach((d) => { if (inR(d)) o.quote += 1; });
+  ev.order.forEach((d) => { if (inR(d)) o.order += 1; });
+  ev.invoice.forEach(([d, amt, paid]) => {
+    if (!inR(d)) return;
+    o.invoice += 1; o.value += amt;
+    if (paid) { o.paid += 1; o.paidValue += amt; }
+  });
+  o.value = Math.round(o.value); o.paidValue = Math.round(o.paidValue);
+  return o;
 }
 
 /* ============ Business pulse ============
@@ -613,4 +655,189 @@ export function useMasterCounts() {
     cust: { total: 248, added: 7 }, prod: { total: 64, added: 2 }, emp: { total: 78, added: 3 },
     vend: { total: 37, added: 1 }, veh: { total: 22, added: 0 }, trans: { total: 15, added: 1 },
   }, Object.fromEntries(MASTERS.map((m) => [m.key, { total: 0, added: null }])));
+}
+
+/* ============ Stock in (GRN) ============
+   data: [[dayMs, acceptedKg], ...] — Accepted_Quantity of every GRN line item, dated by its GRN.
+   GRN1 does not expose the GRN_Line_Items subform (neither in the listing nor by ID), so the
+   line items are read from the report on their own form (GRN Details). Each line record links
+   back to its GRN through a lookup; that link is found by matching GRN record IDs, so the
+   lookup's field name doesn't need to be known. If GRN1 ever does return full subform rows,
+   those are used directly and the second report isn't read.
+   Every line item counts (no date cut-off); `summary` reports how the total was built. */
+const grnLines = (r) => { const l = r?.[GRN.fields.lines]; return Array.isArray(l) ? l : []; };
+const grnHasQty = (rows) => rows.length > 0 && rows.every((l) => l && GRN.fields.accepted in l);
+const grnQty = (rows) => rows.reduce((s, l) => s + toNumber(l?.[GRN.fields.accepted]), 0);
+
+// the GRN a line record belongs to: any field whose value (or value.ID) is a known GRN ID
+const parentOf = (row, ids, hint) => {
+  const pick = (v) => { const id = String(v && typeof v === 'object' ? v.ID ?? '' : v ?? ''); return ids.has(id) ? id : null; };
+  if (hint && row[hint] !== undefined) return pick(row[hint]);
+  for (const [k, v] of Object.entries(row)) if (k !== 'ID') { const id = pick(v); if (id) return id; }
+  return null;
+};
+
+// first line-items report that loads (link names to try, in order)
+async function loadLineRecords() {
+  for (const name of GRN.lineReports) {
+    try { return { name, rows: await getAllRecords(name) }; } catch { /* try the next name */ }
+  }
+  return null;
+}
+
+async function loadStockIn() {
+  const records = await getAllRecords(GRN.report);
+  const dateById = new Map();
+  records.forEach((r) => { const d = toDate(r[GRN.fields.date]); if (r.ID && d) dateById.set(String(r.ID), +d); });
+  const summary = { source: GRN.report, lines: 0, total: 0, linked: 0, ownDate: 0, skipped: 0, skippedKg: 0 };
+
+  // 1) GRN1 already carries full subform rows: use them as they are
+  if (records.some((r) => grnHasQty(grnLines(r)))) {
+    const days = [];
+    records.forEach((r) => {
+      const q = grnQty(grnLines(r)); const d = dateById.get(String(r.ID));
+      summary.lines += grnLines(r).length; summary.total += q;
+      if (d) { days.push([d, q]); summary.linked += q; } else { summary.skipped += 1; summary.skippedKg += q; }
+    });
+    console.info('Stock in summary', summary);
+    return { days, summary };
+  }
+
+  // 2) read the line items from their own report and date each by its GRN
+  const lines = await loadLineRecords();
+  if (!lines) {
+    console.warn(`Stock in: none of the line-item reports could be read (${GRN.lineReports.join(', ')}). `
+      + 'Set GRN.lineReports in zoho.jsx to the link name of the report on the GRN Details form.');
+    throw new Error('GRN line items report not found');
+  }
+  summary.source = lines.name;
+  const ids = new Set(dateById.keys()); const days = []; const unlinked = [];
+  lines.rows.forEach((row) => {
+    const q = toNumber(row[GRN.fields.accepted]);
+    summary.lines += 1; summary.total += q;
+    const pid = parentOf(row, ids, GRN.fields.parent);
+    // no matching GRN (e.g. filtered out of GRN1): fall back to a date on the line itself, then its Added_Time
+    const own = pid ? null : toDate(row[GRN.fields.date]) || toDate(row.Added_Time);
+    if (pid) { days.push([dateById.get(pid), q]); summary.linked += q; }
+    else if (own) { days.push([+own, q]); summary.ownDate += q; unlinked.push(row); }
+    else { summary.skipped += 1; summary.skippedKg += q; unlinked.push(row); }
+  });
+  summary.total = Math.round(summary.total * 100) / 100;
+  console.info('Stock in summary', summary);
+  if (unlinked.length) {
+    console.warn(`Stock in: ${unlinked.length} ${lines.name} rows have no matching ${GRN.report} record`
+      + `${summary.skipped ? ` (${summary.skipped} of them have no date and are not counted)` : ''}.`
+      + ` Set GRN.fields.parent to the lookup field that points to the GRN.`, { lineFields: Object.keys(unlinked[0]), example: unlinked[0] });
+  }
+  return { days, summary };
+}
+
+// sample (outside Zoho): one GRN a day for 400 days, ~600–1,500 kg each
+const sampleStockIn = () => {
+  const rnd = seeded(29); const t = periodStarts().today;
+  return Array.from({ length: 400 }, (_, i) => [+new Date(t.getFullYear(), t.getMonth(), t.getDate() - i), Math.round((600 + rnd() * 900) / 10) * 10]);
+};
+
+export function useStockIn() {
+  const [state, setState] = useState({ data: [], summary: null, loading: true, error: null, live: false });
+  useEffect(() => {
+    let alive = true;
+    waitForSdk().then((ok) => {
+      if (!alive) return null;
+      if (!ok) { const data = sampleStockIn(); setState({ data, summary: { source: 'sample', total: data.reduce((s, [, q]) => s + q, 0) }, loading: false, error: null, live: false }); return null; }
+      return loadStockIn()
+        .then(({ days, summary }) => { if (alive) setState({ data: days, summary, loading: false, error: null, live: true }); })
+        .catch((e) => {
+          console.error(`${GRN.report} fetch failed`, e);
+          if (alive) setState((s) => ({ ...s, loading: false, error: e }));
+        });
+    });
+    return () => { alive = false; };
+  }, []);
+  return state;
+}
+
+// total of column `i` ([day, qty, kg?]) between two day-starts (inclusive)
+export const sumBetween = (days, from, to, i = 1) => days.reduce((s, x) => (x[0] >= +from && x[0] <= +to ? s + (x[i] || 0) : s), 0);
+
+/* ============ Stock out (invoices) ============
+   data: [[dayMs, qty, kg], ...] — one entry per invoice line item, dated by its invoice.
+   Line items come from their own report; each is linked to its invoice by matching record IDs
+   (or STOCK_OUT.fields.parent). Quantity / kg fields are auto-detected unless set in STOCK_OUT. */
+const pickField = (rows, set, exact, loose, avoid) => {
+  if (set) return set;
+  const keys = [...new Set(rows.slice(0, 20).flatMap((r) => Object.keys(r)))];
+  return keys.find((k) => exact.test(k)) || keys.find((k) => loose.test(k) && !avoid.test(k)) || '';
+};
+
+async function loadStockOut() {
+  const [invoices, items] = await Promise.all([getAllRecords(STOCK_OUT.report), getAllRecords(STOCK_OUT.lineReport)]);
+  const skip = new Set(STOCK_OUT.skipStatuses.map((s) => s.toLowerCase()));
+  const dateById = new Map(); let skippedInv = 0;
+  invoices.forEach((r) => {
+    if (skip.has(lower(r[STOCK_OUT.status]))) { skippedInv += 1; return; }
+    const d = toDate(r[STOCK_OUT.date]);
+    if (r.ID && d) dateById.set(String(r.ID), +d);
+  });
+  const allInv = new Set(invoices.map((r) => String(r.ID)));
+
+  const qtyF = pickField(items, STOCK_OUT.fields.qty, /^(quantity|qty)$/i, /quantity|qty/i, /kg|weight|rate|price|amount|uom|unit/i);
+  const kgF = pickField(items, STOCK_OUT.fields.kg, /^(kg|kgs|weight|total_weight|net_weight|weight_kg|weight_in_kg|total_kg|quantity_in_kg)$/i, /kg|weight/i, /rate|price|amount|per/i);
+  const summary = { source: STOCK_OUT.lineReport, lines: items.length, qtyField: qtyF, kgField: kgF, qty: 0, kg: 0, counted: 0, cancelled: 0, unlinked: 0 };
+  if (!qtyF || !kgF) {
+    console.warn(`Stock out: couldn't find the ${!qtyF ? 'quantity' : 'kg'} field on ${STOCK_OUT.lineReport}. `
+      + 'Set STOCK_OUT.fields.qty / .kg in zoho.jsx.', { lineFields: Object.keys(items[0] || {}) });
+  }
+
+  const days = [];
+  items.forEach((row) => {
+    const q = qtyF ? toNumber(row[qtyF]) : 0; const w = kgF ? toNumber(row[kgF]) : 0;
+    summary.qty += q; summary.kg += w;
+    const pid = parentOf(row, allInv, STOCK_OUT.fields.parent);
+    if (pid && dateById.has(pid)) { days.push([dateById.get(pid), q, w]); summary.counted += 1; }
+    else if (pid) summary.cancelled += 1;            // invoice is cancelled (or has no date)
+    else summary.unlinked += 1;
+  });
+  summary.qty = Math.round(summary.qty * 100) / 100; summary.kg = Math.round(summary.kg * 100) / 100;
+  summary.skippedInvoices = skippedInv;
+  console.info('Stock out summary', summary);
+  if (summary.unlinked) {
+    const ex = items.find((row) => !parentOf(row, allInv, STOCK_OUT.fields.parent));
+    console.warn(`Stock out: ${summary.unlinked} ${STOCK_OUT.lineReport} rows don't link to any ${STOCK_OUT.report} record. `
+      + 'Set STOCK_OUT.fields.parent to the lookup that points to the invoice.', { lineFields: Object.keys(ex || {}), example: ex });
+  }
+  return { days, summary };
+}
+
+// sample (outside Zoho): ~3 invoice lines a day for 400 days
+const sampleStockOut = () => {
+  const rnd = seeded(41); const t = periodStarts().today; const out = [];
+  for (let i = 0; i < 400; i++) {
+    const d = +new Date(t.getFullYear(), t.getMonth(), t.getDate() - i);
+    for (let j = 0; j < 3; j++) { const q = Math.round(20 + rnd() * 60); out.push([d, q, Math.round(q * (8 + rnd() * 6))]); }
+  }
+  return out;
+};
+
+export function useStockOut() {
+  const [state, setState] = useState({ data: [], summary: null, loading: true, error: null, live: false });
+  useEffect(() => {
+    let alive = true;
+    waitForSdk().then((ok) => {
+      if (!alive) return null;
+      if (!ok) {
+        const data = sampleStockOut();
+        setState({ data, summary: { source: 'sample', qty: data.reduce((s, x) => s + x[1], 0), kg: data.reduce((s, x) => s + x[2], 0) }, loading: false, error: null, live: false });
+        return null;
+      }
+      return loadStockOut()
+        .then(({ days, summary }) => { if (alive) setState({ data: days, summary, loading: false, error: null, live: true }); })
+        .catch((e) => {
+          console.error(`${STOCK_OUT.lineReport} fetch failed`, e);
+          if (alive) setState((s) => ({ ...s, loading: false, error: e }));
+        });
+    });
+    return () => { alive = false; };
+  }, []);
+  return state;
 }

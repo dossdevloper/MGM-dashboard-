@@ -5,18 +5,20 @@ import {
   ArrowUpRight, ArrowDownRight, Repeat, CheckCircle2, Trophy, Gauge, BarChart3, Table2, TrendingUp,
 } from 'lucide-react';
 import DateRangePicker from './datepicker.jsx';
+import Toast from './toast.jsx';
+import { LOGO } from './brand.js';
+import { GRN, STOCK_OUT, useStockIn, useStockOut, sumBetween } from './zoho.jsx';
 import './stock.css';
 
 /* ============ Stock in / stock out — static sample data (swap for Zoho reports later) ============ */
 const v = (n) => `var(${n})`;
-const short = (n) => (n >= 10000000 ? `₹${+(n / 10000000).toFixed(2)}Cr` : n >= 100000 ? `₹${+(n / 100000).toFixed(2)}L` : n >= 1000 ? `₹${+(n / 1000).toFixed(1)}K` : `₹${Math.round(n)}`);
 const kg = (n) => `${n.toLocaleString('en-IN')} kg`;
 
 // KPI values per period: [on hand kg, on hand ₹, in kg, out kg, low-stock items]
 const KPI = {
   Today: { hand: 18640, value: 2984000, in: 1240, out: 1610, low: 3, inS: [3, 5, 4, 6, 5, 7, 6, 8], outS: [4, 5, 6, 5, 7, 6, 8, 9] },
-  'This week': { hand: 18640, value: 2984000, in: 8920, out: 9480, low: 3, inS: [20, 26, 22, 31, 28, 35, 33, 38], outS: [22, 25, 27, 29, 30, 34, 36, 37] },
   'This month': { hand: 18640, value: 2984000, in: 31450, out: 29880, low: 3, inS: [60, 72, 68, 81, 77, 90, 86, 95], outS: [58, 66, 70, 74, 79, 83, 85, 88] },
+  'This year': { hand: 18640, value: 2984000, in: 372600, out: 355100, low: 3, inS: [700, 820, 790, 940, 900, 1060, 1010, 1120], outS: [680, 770, 820, 860, 920, 970, 990, 1030] },
 };
 
 // last 14 days, kg moved
@@ -99,15 +101,24 @@ const SL_STAGES = [
 // per period: weight checks, avg variance %, pass rate %, transfers, kg transferred (sample data)
 const LINE = {
   Today: { wc: 14, wv: 0.6, pass: 97.8, tr: 3, trKg: 520 },
-  'This week': { wc: 96, wv: 0.8, pass: 98.1, tr: 18, trKg: 3180 },
   'This month': { wc: 412, wv: 0.7, pass: 98.6, tr: 71, trKg: 12640 },
+  'This year': { wc: 4890, wv: 0.7, pass: 98.4, tr: 846, trKg: 151200 },
 };
-const CAP_TOTAL = LOCATIONS.reduce((s, l) => s + l.cap, 0);
-const PER_DAYS = { Today: 1, 'This week': 7, 'This month': 30 };
+// [from, to] day-starts for a period: today, this month (1st–last day), this year (financial
+// year, 1 Apr–31 Mar, same as the Sales page). Whole month / year, so entries already dated
+// later in the period are counted too.
+const dayStart = () => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); };
+const periodRange = (per) => {
+  const t = dayStart();
+  if (per === 'This month') return [new Date(t.getFullYear(), t.getMonth(), 1), new Date(t.getFullYear(), t.getMonth() + 1, 0)];
+  if (per === 'This year') { const fy = t.getMonth() >= 3 ? t.getFullYear() : t.getFullYear() - 1; return [new Date(fy, 3, 1), new Date(fy + 1, 2, 31)]; }
+  return [t, t];
+};
 
 // custom range: scale this month's daily rates by the number of days, with a small stable wobble per range
 const fmtRange = ([a, b]) => {
-  const f = (d) => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  // add the year only when the range crosses years (e.g. the financial year)
+  const f = (d) => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: a.getFullYear() !== b.getFullYear() ? 'numeric' : undefined });
   return +a === +b ? f(a) : `${f(a)} – ${f(b)}`;
 };
 const customStats = ([a, b]) => {
@@ -129,17 +140,54 @@ const IN_BED = [[76, 212], [102, 212], [128, 212]];   // on the inbound truck
 const IN_SLOT = [[196, 194], [218, 194], [240, 194]]; // rack slots they fly to
 const OUT_PICK = [[76, 194], [54, 194], [32, 194]];   // picked from the rack
 const OUT_BED = [[202, 212], [176, 212], [150, 212]]; // spots on the outbound truck
-const TANK = { x: 84, y: 112, w: 104, h: 126 };       // balance tank (zone-local)
+// balance rack (zone-local): top shelf = stock in, middle = balance, bottom = stock out
+const BR = { l: 58, r: 210, top: 150, mid: 196, bot: 242 };
+const BR_SLOTS = [76, 100, 124, 148, 172, 196];          // carton centres along a shelf
+const brY = (shelf) => shelf - 9;                         // carton centre resting on a shelf
 const DIM_IN = [[196, 238], [218, 238], [240, 238], [196, 150], [218, 150]];
 const DIM_OUT = [[32, 238], [54, 238], [76, 238], [32, 150], [54, 150]];
 
-// parabolic hop: x linear, y up then down, small tilt
-const hop = (tl, el, from, to, at, dur, lift = 56) => {
-  const peak = Math.min(from[1], to[1]) - lift;
-  tl.to(el, { x: to[0], duration: dur, ease: 'none' }, at)
-    .to(el, { y: peak, rotation: 12, duration: dur * 0.5, ease: 'power2.out' }, at)
-    .to(el, { y: to[1], rotation: 0, duration: dur * 0.5, ease: 'power2.in' }, at + dur * 0.5);
+/* worker who carries cartons between truck and rack (feet at the floor, facing right by default) */
+const MAN_HAND = 12;   // carton centre sits this far in front of the worker while carried
+const CARRY_Y = 215;   // carton centre height while carried at chest level
+const SlWorker = ({ cls, c }) => (
+  <g className={`sl-man ${cls}`} style={{ '--cc': v(c) }}>
+    <g className="sl-man-f">
+      <g className="sl-leg"><path d="M-1.5,-15 L-2.5,0" /></g>
+      <g className="sl-leg"><path d="M1.5,-15 L2.5,0" /></g>
+      <path className="sl-man-body" d="M-5,-29 Q0,-32 5,-29 L5.5,-14 L-5.5,-14 Z" />
+      <path className="sl-man-vest" d="M-5.2,-22 H5.4" />
+      <circle className="sl-man-head" cx="0" cy="-35.5" r="4.6" />
+      <path className="sl-man-hat" d="M-5.4,-37 A5.4,5.4 0 0 1 5.4,-37 Z" />
+      <path className="sl-man-brim" d="M-6.5,-37 H7.5" />
+      <g className="sl-arm"><path d="M0,-27 L0,-15" /></g>
+    </g>
+  </g>
+);
+// one walk segment: move the worker and swing the legs, ending on a neutral stance
+const walk = (tl, man, legs, x, at, dur) => {
+  const steps = Math.max(2, Math.round(dur / 0.2));
+  tl.to(man, { x, duration: dur, ease: 'power1.inOut' }, at)
+    .fromTo(legs, { rotation: (i) => (i ? -20 : 20) }, { rotation: (i) => (i ? 20 : -20), duration: dur / steps, repeat: steps - 1, yoyo: true, ease: 'sine.inOut' }, at)
+    .set(legs, { rotation: 0 }, at + dur);
 };
+const face = (tl, flip, dir, at) => tl.set(flip, { attr: { transform: dir < 0 ? 'scale(-1,1)' : 'scale(1,1)' } }, at);
+const walkTime = (from, to) => 0.25 + Math.abs(to - from) / 110;
+
+/* truck driver: bobs with the road + exhaust puffs while driving; looks back while parked;
+   blinks the indicator before pulling away */
+const drive = (tl, t, at, dur) => {
+  const halves = Math.max(2, Math.round(dur / 0.13));
+  tl.fromTo(`${t} .sl-drv`, { y: 0 }, { y: -0.9, duration: dur / halves, repeat: halves - 1, yoyo: true, ease: 'sine.inOut' }, at)
+    .set(`${t} .sl-drv`, { y: 0 }, at + dur)
+    .fromTo(`${t} .sl-puff`, { x: 0, y: 0, scale: 0.4, opacity: 0.55 },
+      { x: 14, y: -9, scale: 1.8, opacity: 0, duration: 0.7, ease: 'power1.out', stagger: { each: 0.23, repeat: Math.max(0, Math.round(dur / 0.7) - 1) } }, at);
+};
+const lookBack = (tl, t, from, to) => {
+  tl.to(`${t} .sl-dhead`, { x: 2.4, duration: 0.35, ease: 'power2.out' }, from)
+    .to(`${t} .sl-dhead`, { x: 0, duration: 0.3, ease: 'power2.inOut' }, to);
+};
+const blink = (tl, t, at) => tl.fromTo(`${t} .sl-tlight`, { opacity: 1 }, { opacity: 0.15, duration: 0.14, repeat: 5, yoyo: true, ease: 'steps(1)' }, at);
 
 const SlCrate = ({ c, x = 0, y = 0, cls }) => (
   <g className={cls} transform={x || y ? `translate(${x},${y})` : undefined} style={{ '--cc': v(c) }}><use href="#slCrate" /></g>
@@ -149,7 +197,22 @@ const SlTruck = ({ cls, c, flip }) => (
     <g transform={flip ? 'translate(136,246) scale(-1,1)' : 'translate(0,246)'}>
       <rect className="sl-tbed" x="40" y="-80" width="96" height="58" rx="4" />
       <path className="sl-tcab" d="M0,-22 V-46 L10,-60 H36 V-22 Z" />
+      {/* driver, seen through the cab window (faces the front of the truck) */}
+      <g clipPath="url(#slCab)">
+        <g className="sl-drv">
+          <path className="sl-drv-body" d="M13.5,-37 Q13.5,-45.5 21,-45.5 Q28.5,-45.5 28.5,-37 Z" />
+          <path className="sl-drv-arm" d="M17,-43.5 L11.5,-45.5" />
+          <ellipse className="sl-drv-wheel" cx="10.5" cy="-45.5" rx="1.3" ry="3.4" />
+          <g className="sl-dhead">
+            <circle className="sl-drv-face" cx="21" cy="-49.6" r="3.8" />
+            <path className="sl-drv-cap" d="M17.1,-50.4 A3.9,3.9 0 0 1 24.9,-50.4 Z" />
+            <path className="sl-drv-peak" d="M17.6,-50.4 H14.2" />
+          </g>
+        </g>
+      </g>
       <path className="sl-twin" d="M6,-44 L13,-55 H30 V-44 Z" />
+      {/* exhaust puffs at the back of the chassis */}
+      {[0, 1, 2].map((p) => <circle key={p} className="sl-puff" cx="139" cy="-15" r="3" opacity="0" />)}
       <rect className="sl-tchas" x="0" y="-22" width="136" height="8" rx="3" />
       <circle className="sl-tlight" cx="3" cy="-30" r="2.6" />
       {[22, 112].map((cx) => (
@@ -168,40 +231,47 @@ const SlRack = ({ x }) => (
   </g>
 );
 
-function StockLine({ per, k, L, days }) {
+function StockLine({ per, k, L, days, inLoading, outLoading }) {
   const root = useRef(null);
     const wrap = useRef(null);
-  const lvl = useRef({ base: 0, din: 0, dout: 0 });
+  const slot = useRef(4); // middle-shelf slot the moving carton uses (read by the GSAP loop)
+  const [logoOk, setLogoOk] = useState(true); // brand logo on the cartons
    const [hz, setHz] = useState(null);   // hovered station (0-4)
   const [px, setPx] = useState(null);   // x position of the hover card (px inside the stage)
     const [side, setSide] = useState('');  // side of the station the card sits on: 'r' | 'l' | ''
-  const net = k.in - k.out; const top = Math.max(k.in, k.out);
-  // tank level: on hand vs total store capacity; in/out bumps scale with the period's flow
-  // (read by the GSAP loop, so period changes apply on the next cycle)
-  const fill = Math.min(1, k.hand / CAP_TOTAL);
-  lvl.current = { base: TANK.y + TANK.h - fill * TANK.h, din: (k.in / top) * 12, dout: (k.out / top) * 12 };
+  // stock in (GRN qty) and stock out (invoice qty) are both quantities, so net is in qty too
+  const net = k.in - k.out; const top = Math.max(1, k.in, k.out); const netReady = !inLoading && !outLoading;
+  const qty = (n) => `${Math.round(n).toLocaleString('en-IN')} qty`;
+  // balance rack: middle shelf holds on-hand stock as a share of store capacity (1–5 of 6 slots,
+  // so there is always a free slot for the carton that comes in from the top shelf)
+  // balance = all received (GRN) − all invoiced, up to the end of the period; the rack shows
+  // how much of everything received is still on hand
+  const fill = k.handIn > 0 ? Math.max(0, Math.min(1, k.hand / k.handIn)) : 0;
+  const balN = Math.min(5, Math.max(1, Math.round(fill * BR_SLOTS.length)));
+  const balTxt = netReady ? `${k.hand.toLocaleString('en-IN')} qty` : '· · ·';
+  slot.current = balN;
   const chips = [
-    [k.in, 'kg', 'received + produced', (k.in / top) * 100],
-    [k.out, 'kg', 'dispatched + consumed', (k.out / top) * 100],
-    [k.hand, 'kg', `${net >= 0 ? '+' : '−'}${kg(Math.abs(net))} net this period`, (k.hand / CAP_TOTAL) * 100],
+    [inLoading ? '…' : k.in, 'qty', inLoading ? 'loading from GRN…' : 'received + produced', inLoading ? 0 : (k.in / top) * 100],
+    [outLoading ? '…' : k.out, 'qty', outLoading ? 'loading from invoices…' : `${kg(Math.round(k.outKg))} · invoiced`, outLoading ? 0 : (k.out / top) * 100],
+    [netReady ? k.hand : '…', 'qty', netReady ? `${net >= 0 ? '+' : '−'}${qty(Math.abs(net))} net this period` : 'waiting for stock in / out…', netReady ? fill * 100 : 0],
     [L.wc, 'checks', `±${L.wv}% avg variance · ${L.pass}% pass`, L.pass],
     [L.tr, 'transfers', `${kg(L.trKg)} moved between stores`, (L.trKg / top) * 100],
   ];
-  const share = (k.in / (k.in + k.out)) * 100;
+  const share = k.in + k.out ? (k.in / (k.in + k.out)) * 100 : 0;
   const fails = Math.round((L.wc * (100 - L.pass)) / 100);
-  const sg = (n) => `${n >= 0 ? '+' : '−'}${kg(Math.abs(n))}`;
+  const sg = (n) => (netReady ? `${n >= 0 ? '+' : '−'}${qty(Math.abs(n))}` : '…');
   // hover card content: label, big value, unit, badge, three detail rows
   const info = [
-    { label: 'Received + produced', val: k.in, unit: 'kg', badge: k.in >= k.out ? 'Higher than out' : null,
-      rows: [['Share of movement', `${share.toFixed(1)}%`], ['Daily average', kg(Math.round(k.in / days))], ['Net vs stock out', sg(net)]] },
-    { label: 'Dispatched + consumed', val: k.out, unit: 'kg', badge: k.out > k.in ? 'Higher than in' : null,
-      rows: [['Share of movement', `${(100 - share).toFixed(1)}%`], ['Daily average', kg(Math.round(k.out / days))], ['Net vs stock in', sg(-net)]] },
-    { label: 'On hand across stores', val: k.hand, unit: 'kg', badge: net >= 0 ? 'Building up' : 'Drawing down',
-      rows: [['Stock value', short(k.value)], ['Net movement', sg(net)], ['Store capacity used', `${((k.hand / CAP_TOTAL) * 100).toFixed(1)}%`]] },
+    { label: 'Received + produced', val: inLoading ? '…' : k.in, unit: 'qty', badge: !inLoading && k.in >= k.out ? 'Higher than out' : null,
+      rows: [['Share of movement', `${share.toFixed(1)}%`], ['Daily average', qty(k.in / days)], ['Net vs stock out', sg(net)]] },
+    { label: 'Invoiced quantity', val: outLoading ? '…' : k.out, unit: 'qty', badge: netReady && k.out > k.in ? 'Higher than in' : null,
+      rows: [['Weight', outLoading ? '…' : kg(Math.round(k.outKg))], ['Daily average', outLoading ? '…' : `${qty(k.out / days)} · ${kg(Math.round(k.outKg / days))}`], ['Net vs stock in', sg(-net)]] },
+    { label: 'On hand (received − invoiced)', val: netReady ? k.hand : '…', unit: 'qty', badge: netReady ? (net >= 0 ? 'Building up' : 'Drawing down') : null,
+      rows: [['Received to date', netReady ? qty(k.handIn) : '…'], ['Invoiced to date', netReady ? qty(k.handOut) : '…'], ['Net this period', sg(net)]] },
     { label: 'Cartons weighed', val: L.wc, unit: 'checks', badge: `${L.pass}% pass`,
       rows: [['Avg variance', `±${L.wv}%`], ['Passed first time', (L.wc - fails).toLocaleString('en-IN')], ['Re-weighed', `${fails}`]] },
     { label: 'Moved between stores', val: L.tr, unit: 'transfers', badge: 'Store A ⇄ B',
-      rows: [['Quantity moved', kg(L.trKg)], ['Avg per transfer', kg(Math.round(L.trKg / L.tr))], ['Share of stock out', `${((L.trKg / k.out) * 100).toFixed(1)}%`]] },
+      rows: [['Quantity moved', kg(L.trKg)], ['Avg per transfer', kg(Math.round(L.trKg / L.tr))], ['Share of stock out', k.outKg ? `${((L.trKg / k.outKg) * 100).toFixed(1)}%` : '—']] },
   ];
   const sc = (i) => ({ className: `sl-scene ${hz === i ? 'on' : ''}`, transform: `translate(${i * SL_Z},0)`, clipPath: 'url(#slClip)' });
   const clear = () => { setHz(null); setPx(null); setSide(''); };
@@ -227,64 +297,131 @@ function StockLine({ per, k, L, days }) {
     const el = root.current;
     const $ = (s) => gsap.utils.toArray(s, el);
     const ctx = gsap.context(() => {
-      gsap.set('.sl-tw,.sl-prop,.sl-splash,.sl-ok,.sl-bin', { transformOrigin: '50% 50%' });
+      gsap.set('.sl-tw,.sl-prop,.sl-ok', { transformOrigin: '50% 50%' });
 
       /* ---- ambient ---- */
       gsap.fromTo('.sl-pulse', { x: 136 }, { x: 1224, duration: 9, repeat: -1, ease: 'none' });
       gsap.to('.sl-prop', { scaleX: 0.25, duration: 0.07, yoyo: true, repeat: -1, ease: 'none' });
       gsap.to('.sl-led', { opacity: 0.25, duration: 0.5, yoyo: true, repeat: -1, ease: 'steps(1)' });
 
-      /* ---- 01 STOCK IN: truck reverses in, cartons arc onto the rack, truck leaves ---- */
+      gsap.set('.sl-leg,.sl-arm', { transformOrigin: '50% 0%' });
+
+      /* ---- 01 STOCK IN: truck reverses in, the worker carries each carton from the
+              truck's tail to the rack, then the empty truck leaves ---- */
       const OFF = -190; const inC = $('.sl-in');
+      const m1 = el.querySelector('.sl-m1'); const f1 = m1.querySelector('.sl-man-f');
+      const legs1 = gsap.utils.toArray(m1.querySelectorAll('.sl-leg')); const arm1 = m1.querySelector('.sl-arm');
+      const IN_HOME = 158; const IN_TAIL = 142; // worker's spot behind the truck, carton hand-off point
       const t1 = gsap.timeline({ repeat: -1 });
       t1.set('.sl-t1', { x: 14 + OFF }, 0)
         .set(inC, { x: (i) => IN_BED[i][0] + OFF, y: (i) => IN_BED[i][1], scale: 1, opacity: 1, rotation: 0 }, 0)
+        .set(m1, { x: IN_HOME, y: 246 }, 0).set(arm1, { rotation: 0 }, 0).set(legs1, { rotation: 0 }, 0)
         .to('.sl-t1', { x: 14, duration: 2, ease: 'power2.out' }, 0)
         .to(inC, { x: (i) => IN_BED[i][0], duration: 2, ease: 'power2.out' }, 0)
         .to('.sl-t1 .sl-tw', { rotation: '+=540', duration: 2, ease: 'power2.out' }, 0);
-      inC.forEach((c, i) => hop(t1, c, IN_BED[i], IN_SLOT[i], 2.3 + i * 0.7, 0.85));
-      t1.fromTo('.sl-pop.in', { y: 0, opacity: 0 }, { y: -14, opacity: 1, duration: 0.4, ease: 'power2.out' }, 4.6)
-        .to('.sl-pop.in', { opacity: 0, duration: 0.6 }, 5.4)
-        .to('.sl-t1', { x: 14 + OFF, duration: 2, ease: 'power2.in' }, 5.2)
-        .to('.sl-t1 .sl-tw', { rotation: '-=540', duration: 2, ease: 'power2.in' }, 5.2)
-        .to(inC, { opacity: 0, duration: 0.5 }, 6.2)
-        .to({}, { duration: 0.001 }, 8.499);
+      face(t1, f1, -1, 0);
+      let T = 2.1;
+      [2, 1, 0].forEach((i, n) => { // nearest carton first; fill rack slots left → right
+        const c = inC[i]; const [sx, sy] = IN_SLOT[n]; const wx = sx - MAN_HAND - 2;
+        t1.to(c, { x: IN_TAIL, duration: 0.25 + (IN_TAIL - IN_BED[i][0]) / 220, ease: 'power1.inOut' }, T);
+        T += 0.3 + (IN_TAIL - IN_BED[i][0]) / 220;
+        t1.to(arm1, { rotation: -80, duration: 0.2 }, T)
+          .to(c, { x: IN_HOME - MAN_HAND, y: CARRY_Y, duration: 0.2 }, T);
+        T += 0.25; face(t1, f1, 1, T);
+        t1.to(c, { x: IN_HOME + MAN_HAND, duration: 0.15 }, T);
+        T += 0.15; const d = walkTime(IN_HOME, wx);
+        walk(t1, m1, legs1, wx, T, d);
+        t1.to(c, { x: wx + MAN_HAND, duration: d, ease: 'power1.inOut' }, T);
+        T += d;
+        t1.to(arm1, { rotation: -135, duration: 0.25 }, T)
+          .to(c, { x: sx, y: sy, duration: 0.3, ease: 'back.out(1.6)' }, T);
+        T += 0.35;
+        t1.to(arm1, { rotation: 0, duration: 0.2 }, T);
+        face(t1, f1, -1, T + 0.1);
+        walk(t1, m1, legs1, IN_HOME, T + 0.1, d);
+        T += 0.1 + d;
+      });
+      drive(t1, '.sl-t1', 0, 2);
+      lookBack(t1, '.sl-t1', 2.1, T - 0.5);
+      blink(t1, '.sl-t1', T - 0.4);
+      drive(t1, '.sl-t1', T + 0.4, 2);
+      t1.fromTo('.sl-pop.in', { y: 0, opacity: 0 }, { y: -14, opacity: 1, duration: 0.4, ease: 'power2.out' }, T)
+        .to('.sl-pop.in', { opacity: 0, duration: 0.6 }, T + 0.8)
+        .to('.sl-t1', { x: 14 + OFF, duration: 2, ease: 'power2.in' }, T + 0.4)
+        .to('.sl-t1 .sl-tw', { rotation: '-=540', duration: 2, ease: 'power2.in' }, T + 0.4)
+        .to(inC, { opacity: 0, duration: 0.5 }, T + 1.8)
+        .to({}, { duration: 0.001 }, T + 2.6);
 
-      /* ---- 02 STOCK OUT: cartons appear on the rack, arc onto the truck, truck drives off ---- */
+      /* ---- 02 STOCK OUT: truck backs in, the worker picks each carton off the rack and
+              loads it at the truck's tail, then the truck drives off ---- */
       const OFF2 = 190; const outC = $('.sl-out');
+      const m2 = el.querySelector('.sl-m2'); const f2 = m2.querySelector('.sl-man-f');
+      const legs2 = gsap.utils.toArray(m2.querySelectorAll('.sl-leg')); const arm2 = m2.querySelector('.sl-arm');
+      const OUT_HOME = 112; const OUT_TAIL = 140;
       const t2 = gsap.timeline({ repeat: -1 });
       t2.set('.sl-t2', { x: 128 + OFF2 }, 0)
         .set(outC, { x: (i) => OUT_PICK[i][0], y: (i) => OUT_PICK[i][1], scale: 0, opacity: 1, rotation: 0 }, 0)
+        .set(m2, { x: OUT_HOME, y: 246 }, 0).set(arm2, { rotation: 0 }, 0).set(legs2, { rotation: 0 }, 0)
         .to('.sl-t2', { x: 128, duration: 2, ease: 'power2.out' }, 0)
         .to('.sl-t2 .sl-tw', { rotation: '+=540', duration: 2, ease: 'power2.out' }, 0)
         .to(outC, { scale: 1, duration: 0.35, ease: 'back.out(2)', stagger: 0.15 }, 0.4);
-      outC.forEach((c, i) => hop(t2, c, OUT_PICK[i], OUT_BED[i], 2.3 + i * 0.7, 0.85));
-      t2.fromTo('.sl-pop.out', { y: 0, opacity: 0 }, { y: -14, opacity: 1, duration: 0.4, ease: 'power2.out' }, 4.6)
-        .to('.sl-pop.out', { opacity: 0, duration: 0.6 }, 5.4)
-        .to('.sl-t2', { x: 128 + OFF2, duration: 2, ease: 'power2.in' }, 5.2)
-        .to('.sl-t2 .sl-tw', { rotation: '-=540', duration: 2, ease: 'power2.in' }, 5.2)
-        .to(outC, { x: `+=${OFF2}`, duration: 2, ease: 'power2.in' }, 5.2)
-        .to({}, { duration: 0.001 }, 8.499);
+      face(t2, f2, -1, 0);
+      let U = 2.1;
+      outC.forEach((c, i) => { // nearest carton first, deepest truck spot first
+        const [px] = OUT_PICK[i]; const wx = px + MAN_HAND + 2; const d = walkTime(OUT_HOME, wx);
+        walk(t2, m2, legs2, wx, U, d);
+        U += d;
+        t2.to(arm2, { rotation: -135, duration: 0.25 }, U);
+        U += 0.25;
+        t2.to(c, { x: wx - MAN_HAND, y: CARRY_Y, duration: 0.3, ease: 'power2.inOut' }, U)
+          .to(arm2, { rotation: -80, duration: 0.3 }, U);
+        U += 0.35; face(t2, f2, 1, U);
+        t2.to(c, { x: wx + MAN_HAND, duration: 0.15 }, U);
+        U += 0.15;
+        walk(t2, m2, legs2, OUT_HOME, U, d);
+        t2.to(c, { x: OUT_HOME + MAN_HAND, duration: d, ease: 'power1.inOut' }, U);
+        U += d;
+        t2.to(c, { x: OUT_TAIL, y: OUT_BED[i][1], duration: 0.25 }, U)
+          .to(arm2, { rotation: 0, duration: 0.2 }, U + 0.2)
+          .to(c, { x: OUT_BED[i][0], duration: 0.25 + (OUT_BED[i][0] - OUT_TAIL) / 220, ease: 'power1.inOut' }, U + 0.3);
+        face(t2, f2, -1, U + 0.35);
+        U += 0.4;
+      });
+      drive(t2, '.sl-t2', 0, 2);
+      lookBack(t2, '.sl-t2', 2.1, U - 0.1);
+      blink(t2, '.sl-t2', U);
+      drive(t2, '.sl-t2', U + 0.7, 2);
+      t2.fromTo('.sl-pop.out', { y: 0, opacity: 0 }, { y: -14, opacity: 1, duration: 0.4, ease: 'power2.out' }, U + 0.3)
+        .to('.sl-pop.out', { opacity: 0, duration: 0.6 }, U + 1.1)
+        .to('.sl-t2', { x: 128 + OFF2, duration: 2, ease: 'power2.in' }, U + 0.7)
+        .to('.sl-t2 .sl-tw', { rotation: '-=540', duration: 2, ease: 'power2.in' }, U + 0.7)
+        .to(outC, { x: `+=${OFF2}`, duration: 2, ease: 'power2.in' }, U + 0.7)
+        .to({}, { duration: 0.001 }, U + 2.9);
 
-      /* ---- 03 BALANCE: cartons pour into the tank, others drain out; level settles on the real on-hand ---- */
-      const lv = $('.sl-lvl'); const off = { o: 0 };
-      const level = () => { const y = lvl.current.base - off.o; lv.forEach((g) => g.setAttribute('transform', `translate(0,${y})`)); };
-      level();
-      gsap.to('.sl-wave', { x: -40, duration: 2.2, repeat: -1, ease: 'none' });
-      const tb = gsap.timeline({ repeat: -1 });
-      $('.sl-bin').forEach((c, i) => tb
-        .set(c, { x: -14, y: 124, opacity: 1, scale: 1, rotation: 0 }, i * 0.6)
-        .to(c, { x: 96, duration: 1.1, ease: 'power1.in' }, i * 0.6)
-        .to(c, { y: 170, rotation: 25, scale: 0.6, opacity: 0, duration: 0.45, ease: 'power2.in' }, i * 0.6 + 1.1));
-      tb.to(off, { o: () => lvl.current.din, duration: 1.2, ease: 'elastic.out(1,0.45)', onUpdate: level }, 1.6)
-        .fromTo('.sl-splash', { scale: 0.4, opacity: 0.9 }, { scale: 2.2, opacity: 0, duration: 0.8, ease: 'power2.out' }, 1.6);
-      $('.sl-bout').forEach((c, i) => tb
-        .set(c, { x: 176, y: 222, opacity: 0, scale: 1 }, 3 + i * 0.6)
-        .to(c, { opacity: 1, duration: 0.2 }, 3 + i * 0.6)
-        .to(c, { x: 290, duration: 1.4, ease: 'power1.out' }, 3 + i * 0.6));
-      tb.to(off, { o: () => lvl.current.din - lvl.current.dout, duration: 1.2, ease: 'power2.inOut', onUpdate: level }, 3.2)
-        .to(off, { o: 0, duration: 1, ease: 'power2.inOut', onUpdate: level }, 5.6)
-        .to({}, { duration: 0.001 }, 6.999);
+      /* ---- 03 BALANCE: a carton comes in on the top shelf, drops into the balance shelf,
+              then one leaves the balance, drops to the bottom shelf and goes out ---- */
+      const sx = () => BR_SLOTS[slot.current];
+      gsap.timeline({ repeat: -1 })
+        .set('.sl-bg', { x: -16, y: brY(BR.top), opacity: 1, rotation: 0 }, 0)
+        .set('.sl-bx', { x: sx, y: brY(BR.mid), opacity: 0, scale: 1 }, 0)
+        .set('.sl-bo', { opacity: 0 }, 0)
+        // IN: slide along the top shelf
+        .to('.sl-bg', { x: sx, duration: 1.6, ease: 'power2.out' }, 0.2)
+        .fromTo('.sl-pop.bin', { y: 0, opacity: 0 }, { y: -10, opacity: 1, duration: 0.4, ease: 'power2.out' }, 1.2)
+        .to('.sl-pop.bin', { opacity: 0, duration: 0.5 }, 2.2)
+        // drop into the balance shelf and become balance stock
+        .to('.sl-bg', { y: brY(BR.mid), duration: 0.55, ease: 'bounce.out' }, 2.1)
+        .to('.sl-bg', { opacity: 0, duration: 0.25 }, 2.7)
+        .to('.sl-bx', { opacity: 1, duration: 0.25 }, 2.7)
+        .fromTo('.sl-bglow', { opacity: 0.9 }, { opacity: 0, duration: 0.9, ease: 'power2.out' }, 2.7)
+        // OUT: a balance carton drops to the bottom shelf and leaves to the right
+        .set('.sl-bx', { opacity: 0 }, 4.3)
+        .set('.sl-bo', { x: sx, y: brY(BR.mid), opacity: 1 }, 4.3)
+        .to('.sl-bo', { y: brY(BR.bot), duration: 0.55, ease: 'bounce.out' }, 4.3)
+        .fromTo('.sl-pop.bout', { y: 0, opacity: 0 }, { y: -10, opacity: 1, duration: 0.4, ease: 'power2.out' }, 5)
+        .to('.sl-pop.bout', { opacity: 0, duration: 0.5 }, 6)
+        .to('.sl-bo', { x: 300, duration: 1.6, ease: 'power2.in' }, 5.1)
+        .to({}, { duration: 0.001 }, 7.999);
 
       /* ---- 04 WEIGHT CHECK: cartons stop under the gate, laser scan, readout + tick ---- */
       const wtxt = el.querySelector('.sl-wtxt');
@@ -342,9 +479,17 @@ function StockLine({ per, k, L, days }) {
           <span className="sl-scan" />
           <svg className="sl-svg" viewBox="0 0 1360 262" role="img" aria-label="Animated stock line: stock in, stock out, balance, weight checking, stock transfer">
             <defs>
-              <g id="slCrate"><rect className="sl-cr" x="-10" y="-8" width="20" height="16" rx="2.5" /><path className="sl-cr-l" d="M-10,-2 H10 M0,-8 V-2" /></g>
+              {/* carton: tape on the top flap + a white MGF brand label (text fallback if the logo can't load) */}
+              <g id="slCrate">
+                <rect className="sl-cr" x="-10" y="-8" width="20" height="16" rx="2.5" />
+                <path className="sl-cr-l" d="M0,-8 V-4.5" />
+                <rect className="sl-cr-tag" x="-8.5" y="-3.8" width="17" height="9.6" rx="1.6" />
+                {logoOk
+                  ? <image href={LOGO} x="-7.8" y="-3.3" width="15.6" height="8.6" preserveAspectRatio="xMidYMid meet" onError={() => setLogoOk(false)} />
+                  : <text className="sl-cr-txt" x="0" y="3.2" textAnchor="middle">MGF</text>}
+              </g>
+              <clipPath id="slCab"><path d="M6,-44 L13,-55 H30 V-44 Z" /></clipPath>
               <clipPath id="slClip"><rect x="0" y="60" width="272" height="196" /></clipPath>
-              <clipPath id="slTank"><rect x={TANK.x + 1.5} y={TANK.y + 1.5} width={TANK.w - 3} height={TANK.h - 3} rx="11" /></clipPath>
             </defs>
 
             {/* HUD */}
@@ -372,6 +517,7 @@ function StockLine({ per, k, L, days }) {
               <SlRack x={172} />
               <g opacity=".55">{DIM_IN.map(([x, y]) => <SlCrate key={`${x}${y}`} c="--sk-green" x={x} y={y} />)}</g>
               <SlTruck cls="sl-t1" c="--sk-green" />
+              <SlWorker cls="sl-m1" c="--sk-green" />
               {IN_BED.map((_, i) => <SlCrate key={i} cls="sl-in" c="--sk-green" />)}
               <text className="sl-pop in" x="218" y="98" textAnchor="middle">+3 CTN</text>
             </g>
@@ -381,39 +527,40 @@ function StockLine({ per, k, L, days }) {
               <SlRack x={8} />
               <g opacity=".55">{DIM_OUT.map(([x, y]) => <SlCrate key={`${x}${y}`} c="--sk-orange" x={x} y={y} />)}</g>
               <SlTruck cls="sl-t2" c="--sk-orange" flip />
+              <SlWorker cls="sl-m2" c="--sk-orange" />
               {OUT_PICK.map((_, i) => <SlCrate key={i} cls="sl-out" c="--sk-orange" />)}
               <text className="sl-pop out" x="50" y="98" textAnchor="middle">−3 CTN</text>
             </g>
 
             {/* ===== 03 BALANCE ===== */}
             <g {...sc(2)}>
-              <rect className="sl-screen" x="92" y="64" width="88" height="36" rx="8" />
+              <rect className="sl-screen" x="84" y="64" width="104" height="36" rx="8" />
               <text className="sl-sl" x="136" y="77" textAnchor="middle">BALANCE</text>
-              <text className="sl-st" x="136" y="94" textAnchor="middle">{k.hand.toLocaleString('en-IN')} kg</text>
-              {/* inlet (top-left) and outlet (bottom-right) pipes */}
-              <rect className="sl-pipe in" x="0" y="113" width={TANK.x + 6} height="22" rx="4" />
-              <path className="sl-pflow in" d={`M6,124 H${TANK.x}`} />
-              <text className="sl-ptag" x="36" y="106" textAnchor="middle">IN</text>
-              <rect className="sl-pipe out" x={TANK.x + TANK.w - 6} y="211" width={278 - TANK.x - TANK.w} height="22" rx="4" />
-              <path className="sl-pflow out" d={`M${TANK.x + TANK.w},222 H266`} />
-              <text className="sl-ptag" x="232" y="204" textAnchor="middle">OUT</text>
-              {[TANK.x + 14, TANK.x + TANK.w - 18].map((x) => <rect key={x} className="sl-post" x={x} y="238" width="5" height="8" />)}
-              {/* tank: liquid level with a moving wave, clipped to the glass */}
-              <rect className="sl-tank" x={TANK.x} y={TANK.y} width={TANK.w} height={TANK.h} rx="12" />
-              <g clipPath="url(#slTank)">
-                <g className="sl-lvl">
-                  <path className="sl-liq sl-wave" d={`M${TANK.x - 40},0${' q10,-5 20,0 t20,0'.repeat(5)} V${TANK.h + 20} H${TANK.x - 40} Z`} />
-                </g>
-              </g>
-              {[0.25, 0.5, 0.75].map((f) => <line key={f} className="sl-tick" x1={TANK.x + TANK.w - 12} x2={TANK.x + TANK.w} y1={TANK.y + TANK.h * (1 - f)} y2={TANK.y + TANK.h * (1 - f)} />)}
-              <rect className="sl-glint" x={TANK.x + 10} y={TANK.y + 10} width="6" height={TANK.h - 24} rx="3" />
-              <g className="sl-lvl">
-                <path className="sl-lmark" d={`M${TANK.x + TANK.w + 4},0 l8,-5 v10 z`} />
-                <text className="sl-lpct" x={TANK.x + TANK.w + 15} y="3.5">{Math.round(fill * 100)}%</text>
-              </g>
-              <circle className="sl-splash" cx={TANK.x + 24} cy={lvl.current.base} r="8" />
-              {[0, 1].map((i) => <SlCrate key={i} cls="sl-bin" c="--sk-green" />)}
-              {[0, 1].map((i) => <SlCrate key={i} cls="sl-bout" c="--sk-orange" />)}
+              <text className="sl-st" x="136" y="94" textAnchor="middle" style={{ fontSize: balTxt.length > 11 ? 11 : balTxt.length > 9 ? 12.5 : 14 }}>{balTxt}</text>
+              {/* rack: top shelf = stock in, middle = balance, bottom = stock out */}
+              <rect className="sl-bmid" x={BR.l + 5} y={BR.top + 6} width={BR.r - BR.l - 5} height={BR.mid - BR.top - 4} rx="4" />
+              <rect className="sl-bglow" x={BR.l + 5} y={BR.top + 6} width={BR.r - BR.l - 5} height={BR.mid - BR.top - 4} rx="4" opacity="0" />
+              <rect className="sl-post" x={BR.l} y="112" width="5" height="134" />
+              <rect className="sl-post" x={BR.r} y="112" width="5" height="134" />
+              <rect className="sl-bshelf in" x={BR.l} y={BR.top} width={BR.r - BR.l + 5} height="4" rx="2" />
+              <rect className="sl-bshelf mid" x={BR.l} y={BR.mid} width={BR.r - BR.l + 5} height="5" rx="2" />
+              <rect className="sl-bshelf out" x={BR.l} y={BR.bot} width={BR.r - BR.l + 5} height="4" rx="2" />
+              {/* feed lines into the top shelf and out of the bottom shelf */}
+              <path className="sl-pflow in" d={`M0,${BR.top + 2} H${BR.l}`} />
+              <path className="sl-pflow out" d={`M${BR.r + 5},${BR.bot + 2} H272`} />
+              <text className="sl-ptag in" x="29" y={BR.top - 12} textAnchor="middle">IN +</text>
+              <text className="sl-ptag" x="29" y={BR.mid - 14} textAnchor="middle">ON HAND</text>
+              <text className="sl-ptag out" x="243" y={BR.bot - 12} textAnchor="middle">OUT −</text>
+              <text className="sl-lpct" x="243" y={BR.mid - 12} textAnchor="middle">{Math.round(fill * 100)}%</text>
+              {/* balance shelf: filled slots = on-hand share, the rest shown empty */}
+              {BR_SLOTS.map((x, i) => (i < balN
+                ? <SlCrate key={x} c="--sk-teal" x={x} y={brY(BR.mid)} />
+                : <rect key={x} className="sl-bempty" x={x - 10} y={brY(BR.mid) - 8} width="20" height="16" rx="2.5" />))}
+              <text className="sl-pop bin" x="136" y={BR.top - 16} textAnchor="middle">+1 CTN</text>
+              <text className="sl-pop bout" x="230" y={BR.bot - 30} textAnchor="middle">−1 CTN</text>
+              <SlCrate cls="sl-bx" c="--sk-teal" />
+              <SlCrate cls="sl-bg" c="--sk-green" />
+              <SlCrate cls="sl-bo" c="--sk-orange" />
             </g>
 
             {/* ===== 04 WEIGHT CHECKING ===== */}
@@ -463,7 +610,7 @@ function StockLine({ per, k, L, days }) {
           return (
             <div className="sl-tip" role="tooltip" style={{ left: px, '--c': v(c), '--w': `${Math.min(100, chips[hz][3])}%` }}>
               <div className="sl-tip-h"><span className="no">{n}</span>{name}<span className="per">{per}</span></div>
-              <div className="sl-tip-v">{d.val.toLocaleString('en-IN')}<small>{d.unit}</small>{d.badge && <em>{d.badge}</em>}</div>
+              <div className="sl-tip-v">{typeof d.val === 'number' ? d.val.toLocaleString('en-IN') : d.val}<small>{d.unit}</small>{d.badge && <em>{d.badge}</em>}</div>
               <div className="sl-tip-l">{d.label}</div>
               <div className="sl-tip-bar"><i /></div>
               {d.rows.map(([label, value]) => <div key={label} className="sl-tip-r"><span>{label}</span><b>{value}</b></div>)}
@@ -481,7 +628,7 @@ function StockLine({ per, k, L, days }) {
               <span className="sl-chip-ic"><Ic size={17} strokeWidth={2.1} /></span>
               <div className="sl-chip-t">
                 <span><em>{n}</em>{name}</span>
-                <b>{val.toLocaleString('en-IN')}<small>{unit}</small></b>
+                <b>{typeof val === 'number' ? val.toLocaleString('en-IN') : val}<small>{unit}</small></b>
                 <small>{sub}</small>
                 <div className="sl-meter"><i style={{ '--w': `${Math.min(100, w)}%` }} /></div>
               </div>
@@ -498,15 +645,45 @@ function StockLine({ per, k, L, days }) {
 function StockKpis() {
   const [per, setPer] = useState('This month');
   const [custom, setCustom] = useState(null);
-  const { k, L, days } = per === 'Custom' && custom ? customStats(custom) : { k: KPI[per], L: LINE[per], days: PER_DAYS[per] };
-  const label = per === 'Custom' && custom ? fmtRange(custom) : per;
+  const grn = useStockIn(); const inv = useStockOut();
+  const isCustom = per === 'Custom' && custom;
+  const base = isCustom ? customStats(custom) : { k: KPI[per], L: LINE[per] };
+  // stock in is live: Accepted Quantity from the GRN report, summed over the selected dates
+  const [from, to] = isCustom ? custom : periodRange(per);
+  // daily average uses the days elapsed so far (a whole month that's half over counts as half)
+  const days = Math.max(1, Math.round((Math.min(+to, +dayStart()) - from) / 864e5) + 1);
+  // stock out is live too: invoice line items (quantity + kg), summed over the same dates
+  const k = { ...base.k, in: Math.round(sumBetween(grn.data, from, to)), out: Math.round(sumBetween(inv.data, from, to, 1)), outKg: sumBetween(inv.data, from, to, 2) };
+  // balance on hand at the end of the period = everything received − everything invoiced up to then
+  const handIn = Math.round(sumBetween(grn.data, 0, to)); const handOut = Math.round(sumBetween(inv.data, 0, to, 1));
+  Object.assign(k, { hand: handIn - handOut, handIn, handOut });
+  const fmt = (n) => Math.round(n).toLocaleString('en-IN');
+  const all = grn.summary ? fmt(grn.summary.total) : null;
+  const allOut = inv.summary ? `${fmt(inv.summary.qty)} qty / ${fmt(inv.summary.kg)} kg` : null;
+  const live = grn.live || inv.live; const busy = grn.loading || inv.loading;
+  const label = isCustom ? fmtRange(custom) : per;
+  // toast after a filter is applied (its figures follow the live values for the new period)
+  const [toast, setToast] = useState(null);
+  const notify = (name, range) => setToast({ id: Date.now(), name, range });
   return (
     <section className="card sk s12">
       <Head icon={Boxes} title="Stock Overview" sub="Inventory in & out across all stores">
-        <Seg options={Object.keys(KPI)} value={per} onChange={setPer} />
-        <DateRangePicker value={custom} active={per === 'Custom'} onApply={(r) => { setCustom(r); setPer('Custom'); }} />
+        <span className={`sk-live ${live ? '' : busy ? 'wait' : 'off'}`}
+          title={`Stock in = Accepted Quantity of every GRN line item, by ${GRN.fields.date}${all ? ` (all dates: ${all} qty)` : ''}.
+`
+            + `Stock out = ${STOCK_OUT.lineReport} quantity + kg, by ${STOCK_OUT.date}${allOut ? ` (all dates: ${allOut})` : ''}.
+`
+            + 'The cards show only the selected period.'}>
+          <i />{busy ? 'Loading…' : live ? 'Live' : 'Sample'}
+        </span>
+        <Seg options={Object.keys(KPI)} value={per} onChange={(p2) => { setPer(p2); notify(p2, periodRange(p2)); }} />
+        <DateRangePicker value={custom} active={per === 'Custom'} onApply={(r) => { setCustom(r); setPer('Custom'); notify('Custom range', r); }} />
       </Head>
-      <StockLine per={label} k={k} L={L} days={days} />
+      <StockLine per={label} k={k} L={base.L} days={days} inLoading={grn.loading} outLoading={inv.loading} />
+      {toast && (
+        <Toast key={toast.id} title={`${toast.name} applied`} range={fmtRange(toast.range)} onDone={() => setToast(null)}
+          stats={busy ? [['Loading', 'GRN & invoices…']] : [['In', `${fmt(k.in)} qty`], ['Out', `${fmt(k.out)} qty`], ['Balance', `${fmt(k.hand)} qty`]]} />
+      )}
     </section>
   );
 }
@@ -903,7 +1080,6 @@ export default function StockPage() {
   useLayoutEffect(() => {
     const c = gsap.context(() => {
       gsap.fromTo('.sk', { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.6, stagger: 0.07, ease: 'power3.out', clearProps: 'transform' });
-      gsap.fromTo('.sk-kpi', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.45, stagger: 0.06, delay: 0.2, ease: 'power2.out', clearProps: 'transform' });
     }, root);
     return () => c.revert();
   }, []);

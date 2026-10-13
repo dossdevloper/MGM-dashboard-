@@ -9,7 +9,9 @@ import {
 import './App.css';
 import StockPage from './stock.jsx';
 import DateRangePicker from './datepicker.jsx';
-import { useSalesOrderStatus, usePayments, PAYMENTS, useInvoices, useWeeklyRevenue, useTodayHighlights, useFactoryFlow, DISPATCHES, useReceivables, useTopCustomers, useSalesFunnel, useBusinessPulse, dayKey, useMasterCounts, MASTERS, INVOICES as INV_CFG } from './zoho.jsx';
+import Toast from './toast.jsx';
+import { LOGO } from './brand.js';
+import { useSalesOrderStatus, usePayments, PAYMENTS, useInvoices, useWeeklyRevenue, useTodayHighlights, useFactoryFlow, DISPATCHES, useReceivables, useTopCustomers, useSalesFunnel, funnelBetween, useBusinessPulse, dayKey, useMasterCounts, MASTERS, INVOICES as INV_CFG } from './zoho.jsx';
 
 // import './Loader_snippet.jsx';
 
@@ -19,7 +21,6 @@ if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motio
 /* ============ CONFIG ============ */
 const BASE_URL = 'https://creatorapp.zoho.in/mgfportal/mgf-manufacturing';
 const zoho = (link) => `${BASE_URL}#Report:${link}`;
-const LOGO = 'https://mahaganapathifoods.com/appalam-manufacturers-madurai/appalam-manufacturers-exporters-in-madurai-india.png';
 const hideBroken = (e) => { e.currentTarget.style.display = 'none'; };
 
 // Every report here is reachable from the search box (Ctrl/Cmd + K)
@@ -154,8 +155,9 @@ function CountUp({ to, dec = 0, suffix = '', delay = 0 }) {
   }, [ready, to]);
   return <span ref={ref}>{fmt(0)}</span>;
 }
-const Seg = ({ options, value, onChange }) => (
-  <div className="seg">{options.map((o) => <button key={o} className={o === value ? 'on' : ''} onClick={() => onChange(o)}>{o}</button>)}</div>
+// segmented filter; extra controls (e.g. a date picker with inSeg) can sit inside the same pill
+const Seg = ({ options, value, onChange, children }) => (
+  <div className="seg">{options.map((o) => <button key={o} className={o === value ? 'on' : ''} onClick={() => onChange(o)}>{o}</button>)}{children}</div>
 );
 function Spark({ data, color, delay }) {
   const ready = useContext(Ready); const r = useRef(null);
@@ -506,6 +508,9 @@ function Payments() {
 /* invoices: period tiles + status donut + recent list */
 function Invoices() {
   const ready = useContext(Ready); const r = useRef(null); const [h, setH] = useState(null);
+  // floating count card that follows the pointer over the donut (same as Sales Order Status)
+  const dn = useRef(null); const [tp, setTp] = useState(null);
+  const moveTip = (e) => { const b = dn.current.getBoundingClientRect(); setTp({ x: e.clientX - b.left, y: e.clientY - b.top }); };
   const { data: inv, loading } = useInvoices();
   const INV_STATUS = INV_CFG.statuses.map(([label, c]) => [label, inv.status[label] || 0, c]);
   const INV_STATS = [['Today', 'today', '--w-purple'], ['This week', 'week', '--w-blue'], ['This month', 'month', '--w-orange'], ['This year', 'year', '--w-green']]
@@ -530,8 +535,10 @@ function Invoices() {
         .from('.iv-st', { opacity: 0, x: -10, duration: 0.5, stagger: 0.1 }, 0.4)
         .from('.iv-svg', { scale: 0.6, rotation: -40, opacity: 0, duration: 0.9, ease: 'back.out(1.5)', transformOrigin: '50% 50%' }, 0.4)
         .from('.donut-c', { opacity: 0, duration: 0.5 }, 1.1)
-        .from('.iv-legend .wm-row', { opacity: 0, y: 12, duration: 0.45, stagger: 0.07, clearProps: 'opacity,transform' }, 0.9)
-        .from('.iv-row', { opacity: 0, x: 28, duration: 0.5, stagger: 0.09, clearProps: 'opacity,transform' }, 0.5);
+        .from('.iv-legend .wm-row', { opacity: 0, y: 12, duration: 0.45, stagger: 0.07, clearProps: 'opacity,transform' }, 0.9);
+      // recent invoices may still be loading (no rows yet)
+      const rows = gsap.utils.toArray('.iv-row', r.current);
+      if (rows.length) tl.from(rows, { opacity: 0, x: 28, duration: 0.5, stagger: 0.09, clearProps: 'opacity,transform' }, 0.5);
     }, r);
     return () => c.revert();
   }, [ready]);
@@ -564,18 +571,23 @@ function Invoices() {
           <div className="iv-col">
             <div className="iv-st">Invoice status</div>
             <div className="iv-donut">
-              <div className="donut">
+              <div className="donut" ref={dn}>
                 <svg className="iv-svg" viewBox="0 0 176 176">
                   <g transform="rotate(-90 88 88)">
                     <circle cx="88" cy="88" r={R} fill="none" stroke="var(--w-cream)" strokeWidth="26" />
                     {segs.map((s, i) => (
                       <circle key={s.label} className={`iv${i}`} cx="88" cy="88" r={R} fill="none" strokeWidth={h === i ? 30 : 26} strokeDashoffset={-s.off}
                         style={{ stroke: v(s.c), strokeDasharray: `0 ${C}`, opacity: h === null || h === i ? 1 : 0.4, transition: 'stroke-width .25s, opacity .25s', cursor: 'pointer' }}
-                        onMouseEnter={() => setH(i)} onMouseLeave={() => setH(null)} />
+                        onMouseEnter={(e) => { setH(i); moveTip(e); }} onMouseMove={moveTip} onMouseLeave={() => { setH(null); setTp(null); }} />
                     ))}
                   </g>
                 </svg>
                 <div className="donut-c"><b>{(h === null ? total : segs[h].v).toLocaleString('en-IN')}</b><span>{h === null ? 'Invoices' : segs[h].label}</span></div>
+                {h !== null && tp && (
+                  <div className="so-tip" style={{ left: tp.x, top: tp.y, '--c': v(segs[h].c) }}>
+                    <small>{segs[h].label}</small><b>{segs[h].v.toLocaleString('en-IN')}</b>
+                  </div>
+                )}
               </div>
             </div>
             <div className="iv-legend">
@@ -696,6 +708,17 @@ const FL_CARD = {
   weigh: [Scale, '--volt'], pack: [Package, '--toast'], ship: [Send, '--leaf'],
 };
 const FL_PERIODS = { Today: 'today', 'This month': 'month', 'This year': 'year' };
+// [from, to] for a factory-line period (year = financial year from 1 April), for the toast
+const flRange = (p) => {
+  const n = new Date(); const t = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  if (p === 'This month') return [new Date(t.getFullYear(), t.getMonth(), 1), t];
+  if (p === 'This year') return [new Date(t.getMonth() >= 3 ? t.getFullYear() : t.getFullYear() - 1, 3, 1), t];
+  return [t, t];
+};
+const fmtRange = ([a, b]) => {
+  const f = (d) => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: a.getFullYear() !== b.getFullYear() ? 'numeric' : undefined });
+  return +a === +b ? f(a) : `${f(a)} – ${f(b)}`;
+};
 // truck bed slots, loading order: far end first, bottom row first
 const SLOTS = [-31, -51, -71].flatMap((cy) => [85, 62, 39, 16].map((cx) => [cx, cy]));
 const jig = (b, a, d = 0) => +(b + (Math.random() - 0.5) * a).toFixed(d);
@@ -713,6 +736,9 @@ const ctxRef = useRef(null);
   const maxN = Math.max(1, ...FL_STAGES.map(([, , , k]) => flow.stations[k].data[pk]));
   const fulfilPct = flow.fulfil.all[pk] ? Math.round((flow.fulfil.done[pk] / flow.fulfil.all[pk]) * 1000) / 10 : 0;
   const fmt = (n) => (flow.loading ? '…' : n.toLocaleString('en-IN'));
+  // toast after a filter is applied (figures follow the live counts for the new period)
+  const [toast, setToast] = useState(null);
+  const notify = (name, range) => setToast({ id: Date.now(), name, range });
   // hover: find the station under the pointer (zones split halfway between stations)
   const [hov, setHov] = useState(null);
   const zone = (i) => [i ? (FL_STAGES[i - 1][2] + FL_STAGES[i][2]) / 2 : 12, i < FL_STAGES.length - 1 ? (FL_STAGES[i][2] + FL_STAGES[i + 1][2]) / 2 : 1348];
@@ -849,14 +875,19 @@ const ctxRef = useRef(null);
 
   return (
     <Card className="s12 fl">
+{toast && (
+  <Toast key={toast.id} title={`${toast.name} applied`} range={fmtRange(toast.range)} onDone={() => setToast(null)}
+    stats={flow.loading ? [['Loading', 'live counts…']]
+      : [['Orders', fmt(flow.stations.order.data[pk])], ['Shipments', fmt(flow.stations.ship.data[pk])], ['Trucks', fmt(flow.trucks[pk])]]} />
+)}
 <div className="card-h fl-h">
   <div className="row" style={{ marginLeft: 'auto' }}>
     <span className={`fl-live ${running ? '' : 'off'}`}><i />{running ? 'Line running' : 'Line stopped'}</span>
     {/* <button className={`fl-ctl ${running ? '' : 'off'}`} onClick={() => setRunning(!running)} aria-pressed={!running}>
       {running ? <><Pause />Stop</> : <><Play />Start</>}
     </button> */}
-    <Seg options={Object.keys(FL_PERIODS)} value={period} onChange={setPeriod} />
-    <DateRangePicker value={custom} active={period === 'Custom'} onApply={(r) => { setCustom(r); setPeriod('Custom'); }} />
+    <Seg options={Object.keys(FL_PERIODS)} value={period} onChange={(p) => { setPeriod(p); notify(p, flRange(p)); }} />
+    <DateRangePicker value={custom} active={period === 'Custom'} onApply={(r) => { setCustom(r); setPeriod('Custom'); notify('Custom range', r); }} />
   </div>
 </div>
 
@@ -1178,7 +1209,7 @@ function CashRadar() {
     ['Outstanding', d.outstanding, '--fx-gold', d.invoiced ? Math.min(100, (d.outstanding / d.invoiced) * 100) : 0],
   ];
   return (
-    <Card className="s8 fx">
+    <Card className="s7 fx">
       <FxHead kicker="FY receivables" title="Cash Flow Radar" icon={Radar} live={live} loading={loading}>
         <a className="fx-link" href={zoho(INV_REPORT)} target="_blank" rel="noopener noreferrer">Invoices<ArrowUpRight size={14} /></a>
       </FxHead>
@@ -1234,20 +1265,34 @@ function CashRadar() {
 /* sales funnel: quotation > order > invoice > paid */
 function SalesFunnel() {
   const [per, setPer] = useState('This year');
-  const { data: d, loading, live } = useSalesFunnel(); const k = per === 'This year' ? 'year' : 'month';
+  const [custom, setCustom] = useState(null);
+  const { data, loading, live } = useSalesFunnel();
+  // counts for the selected range: this month / this financial year (to today) or a custom range
+  const range = per === 'Custom' && custom ? custom : flRange(per);
+  const f = funnelBetween(data.ev, range[0], range[1]); const miss = data.missing;
   const stages = [
-    ['Quotations', d.quote[k], FileText, '--fx-violet', d.missing.quote],
-    ['Sales orders', d.order[k], ShoppingCart, '--fx-cyan', d.missing.order],
-    ['Invoices', d.invoice[k], ReceiptText, '--fx-gold', d.missing.invoice],
-    ['Paid', d.paid[k], CheckCircle2, '--fx-green', d.missing.invoice],
+    ['Quotations', f.quote, FileText, '--fx-violet', miss.quote],
+    ['Sales orders', f.order, ShoppingCart, '--fx-cyan', miss.order],
+    ['Invoices', f.invoice, ReceiptText, '--fx-gold', miss.invoice],
+    ['Paid', f.paid, CheckCircle2, '--fx-green', miss.invoice],
   ];
   const max = Math.max(1, ...stages.map((s) => s[1]));
-  const win = d.quote[k] ? (d.paid[k] / d.quote[k]) * 100 : 0;
+  const win = f.quote ? (f.paid / f.quote) * 100 : 0;
+  // toast after a filter is applied (figures follow the live counts for the new range)
+  const [toast, setToast] = useState(null);
+  const notify = (name, r) => setToast({ id: Date.now(), name, r });
   return (
-    <Card className="s4 fx">
+    <Card className="s5 fx fn-card">
       <FxHead kicker="Conversion" title="Sales Funnel" icon={Filter} live={live} loading={loading}>
-        <Seg options={['This month', 'This year']} value={per} onChange={setPer} />
+        <Seg options={['This month', 'This year']} value={per} onChange={(p) => { setPer(p); notify(p, flRange(p)); }}>
+          <DateRangePicker inSeg value={custom} active={per === 'Custom'} onApply={(r) => { setCustom(r); setPer('Custom'); notify('Custom range', r); }} />
+        </Seg>
       </FxHead>
+      {toast && (
+        <Toast key={toast.id} title={`${toast.name} applied`} range={fmtRange(toast.r)} onDone={() => setToast(null)}
+          stats={loading ? [['Loading', 'funnel…']]
+            : [['Quotes', f.quote.toLocaleString('en-IN')], ['Orders', f.order.toLocaleString('en-IN')], ['Paid', f.paid.toLocaleString('en-IN')], ['Collected', shortInr(f.paidValue)]]} />
+      )}
       <div className="fn">
         {stages.map(([label, n, Ic, c, miss], i) => {
           const next = stages[i + 1]; const conv = next && n ? Math.min(100, (next[1] / n) * 100) : null;
@@ -1263,8 +1308,8 @@ function SalesFunnel() {
       </div>
       <div className="fn-f">
         <div><span>Quote → paid</span><b>{win.toFixed(1)}%</b></div>
-        <div><span>Invoiced</span><b>{shortInr(d.value[k])}</b></div>
-        <div><span>Collected</span><b style={{ color: v('--fx-green') }}>{shortInr(d.paidValue[k])}</b></div>
+        <div><span>Invoiced</span><b>{shortInr(f.value)}</b></div>
+        <div><span>Collected</span><b style={{ color: v('--fx-green') }}>{shortInr(f.paidValue)}</b></div>
       </div>
     </Card>
   );
@@ -1394,6 +1439,7 @@ function BusinessPulse() {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const [ym, setYm] = useState(() => [today.getFullYear(), today.getMonth()]);
   const [hov, setHov] = useState(null);
+  const [toast, setToast] = useState(null);
   const [y, m] = ym;
   // selectable range: earliest record's month (at least 12 months back) .. this month; months counted as y*12+m
   const maxM = today.getFullYear() * 12 + today.getMonth();
@@ -1421,8 +1467,18 @@ function BusinessPulse() {
   return (
     <Card className="s6 fx">
       <FxHead kicker="month view" title="Business Pulse" icon={Activity} live={live} loading={loading}>
-        <MonthPicker value={cur} min={minM} max={maxM} activity={perMonth} onChange={go} />
+        <MonthPicker value={cur} min={minM} max={maxM} activity={perMonth} onChange={(k) => { if (k !== cur && k >= minM && k <= maxM) setToast({ id: Date.now(), k }); go(k); }} />
       </FxHead>
+      {toast && (() => {
+        // toast for the chosen month (figures follow the live counts once the new month renders)
+        const mY = Math.floor(toast.k / 12); const mM = toast.k % 12;
+        const first = new Date(mY, mM, 1); const last = new Date(mY, mM + 1, 0);
+        return (
+          <Toast key={toast.id} title={`${label(first)} applied`} range={fmtRange([first, last])} onDone={() => setToast(null)}
+            stats={loading ? [['Loading', 'activity…']]
+              : [['Orders', tot.so.toLocaleString('en-IN')], ['Invoices', tot.inv.toLocaleString('en-IN')], ['Payments', tot.pay.toLocaleString('en-IN')], ['Active days', `${active}/${past.length}`]]} />
+        );
+      })()}
       <div className="bp-stats">
         <div><Activity size={15} /><b>{active}<small>/{past.length}</small></b><span>active days</span></div>
         <div><Flame size={15} /><b>{streak}</b><span>best streak</span></div>
@@ -1612,8 +1668,10 @@ export default function App() {
     if (!ready) return undefined;
     const c = gsap.context(() => {
       const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
-      tl.fromTo('.top', { opacity: 0, y: -18 }, { opacity: 1, y: 0, duration: 0.7 }, 0.3)
-        .fromTo('.reveal', { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.7, stagger: 0.06, clearProps: 'transform' }, 0.4);
+      tl.fromTo('.top', { opacity: 0, y: -18 }, { opacity: 1, y: 0, duration: 0.7 }, 0.3);
+      // only when the page has .reveal blocks (avoids GSAP "target not found" warnings)
+      const rv = gsap.utils.toArray('.reveal', shell.current);
+      if (rv.length) tl.fromTo(rv, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.7, stagger: 0.06, clearProps: 'transform' }, 0.4);
     }, shell);
     return () => c.revert();
   }, [ready]);
@@ -1664,7 +1722,8 @@ export default function App() {
           <WeeklyRevenue />
           <Payments />
           <Invoices />
-          <CashRadar /><SalesFunnel />
+          {/* radar + funnel share one row at 5 : 3 (between the 8:4 and 7:5 grid splits) */}
+          <div className="s12 pair-rf"><CashRadar /><SalesFunnel /></div>
           <TopCustomers /><BusinessPulse />
           {/* <MasterRecords /> */}
           {/* <Dispatches /> */}

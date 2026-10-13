@@ -5,7 +5,9 @@ import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-rea
 const DAY_MS = 864e5;
 const d0 = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const fmtShort = (d) => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-export default function DateRangePicker({ value, active, onApply }) {
+const fmtNum = (d) => d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' }); // compact, for the in-pill button
+// inSeg: render the button as one more segment inside a <Seg> pill
+export default function DateRangePicker({ value, active, onApply, inSeg = false }) {
   const today = d0(new Date());
   const [open, setOpen] = useState(false);
   const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
@@ -44,10 +46,12 @@ export default function DateRangePicker({ value, active, onApply }) {
   const canNext = new Date(y, m + 1, 1) <= today;
 
   return (
-    <div className="drp" ref={ref}>
+    <div className={`drp ${inSeg ? 'in-seg' : ''}`} ref={ref}>
       <button className={`drp-btn ${active ? 'on' : ''} ${open ? 'open' : ''}`} onClick={() => setOpen(!open)} aria-haspopup="dialog" aria-expanded={open}>
         <CalendarDays size={14} />
-        {active && value ? <span>{fmtShort(value[0])}{+value[0] !== +value[1] && <> – {fmtShort(value[1])}</>}</span> : <span>Custom</span>}
+        {active && value
+          ? <span title={`${fmtShort(value[0])} – ${fmtShort(value[1])}`}>{(inSeg ? fmtNum : fmtShort)(value[0])}{+value[0] !== +value[1] && <>{inSeg ? '–' : ' – '}{(inSeg ? fmtNum : fmtShort)(value[1])}</>}</span>
+          : <span>Custom</span>}
         <ChevronDown size={13} className="drp-caret" />
       </button>
       {open && (

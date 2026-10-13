@@ -65,8 +65,8 @@ a{color:inherit;text-decoration:none}
 
 /* ===== grid + cards ===== */
 .grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--gap)}
-.s3{grid-column:span 3}.s4{grid-column:span 4}.s6{grid-column:span 6}.s8{grid-column:span 8}.s12{grid-column:span 12}
-@media (max-width:1100px){.s3{grid-column:span 6}.s4,.s6,.s8{grid-column:span 12}}
+.s3{grid-column:span 3}.s4{grid-column:span 4}.s5{grid-column:span 5}.s7{grid-column:span 7}.s6{grid-column:span 6}.s8{grid-column:span 8}.s12{grid-column:span 12}
+@media (max-width:1100px){.s3{grid-column:span 6}.s4,.s5,.s6,.s7,.s8{grid-column:span 12}}
 @media (max-width:760px){.brand-s{display:none}}
 @media (max-width:640px){.s3{grid-column:span 12}.main{padding:0 12px 28px}}
 .card{position:relative;padding:var(--pad);border-radius:var(--r);border:1px solid var(--line);background:var(--card);box-shadow:var(--sh);min-width:0;overflow:hidden}
@@ -74,8 +74,8 @@ a{color:inherit;text-decoration:none}
 .card-h.fl-h{justify-content:flex-end;margin-bottom:10px}
 .card-t{font:600 13.5px/1.3 var(--f-head)}.card-s{font-size:11.5px;color:var(--muted);margin-top:1px}
 .seg{display:inline-flex;padding:2px;border-radius:8px;background:var(--soft)}
-.seg button{padding:3px 9px;border-radius:6px;font-weight:600;font-size:11px;color:var(--muted);transition:all .15s}
-.seg button.on{background:var(--card);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.seg > button{padding:3px 9px;border-radius:6px;font-weight:600;font-size:11px;color:var(--muted);transition:all .15s}
+.seg > button.on{background:var(--card);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)}
 
 /* KPI (kept in case the cards are re-enabled) */
 .kpi-top{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:500;color:var(--muted)}
@@ -546,12 +546,16 @@ a.fs:hover{transform:translateY(-2px)}
 @keyframes fxPing{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--fx-green) 55%,transparent)}70%{box-shadow:0 0 0 7px color-mix(in srgb,var(--fx-green) 0%,transparent)}100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--fx-green) 0%,transparent)}}
 @keyframes fxBlink{50%{opacity:.2}}
 .fx-hr{display:flex;align-items:center;gap:8px}
+/* cards with a date picker (Sales Funnel): let the filters drop under the title when the card is narrow */
+.fx-h:has(.drp){flex-wrap:wrap;row-gap:10px}
+.fx-h:has(.drp) .fx-ht{flex:1 0 auto}
+.fx-h:has(.drp) .fx-hr{margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
 .fx-link,.fx-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:99px;font:600 11px 'Space Grotesk',var(--f-ui);text-decoration:none;
   color:var(--fx-cyan);background:color-mix(in srgb,var(--fx-cyan) 8%,transparent);border:1px solid color-mix(in srgb,var(--fx-cyan) 28%,transparent);transition:background .2s,box-shadow .2s}
 .fx-link:hover{background:color-mix(in srgb,var(--fx-cyan) 16%,transparent);box-shadow:0 0 18px -4px var(--fx-cyan)}
 .fx .seg{background:var(--fx-glass);border-color:var(--fx-line)}
-.fx .seg button{color:var(--fx-sub)}
-.fx .seg button.on{background:color-mix(in srgb,var(--fx-cyan) 14%,transparent);color:var(--fx-cyan);box-shadow:none}
+.fx .seg > button{color:var(--fx-sub)}
+.fx .seg > button.on{background:color-mix(in srgb,var(--fx-cyan) 14%,transparent);color:var(--fx-cyan);box-shadow:none}
 .fx-empty{padding:28px 0;text-align:center;font-size:12px;color:var(--fx-sub)}
 .fx b{font-variant-numeric:tabular-nums}
 
@@ -801,12 +805,12 @@ a.fs:hover{transform:translateY(-2px)}
 
 /* factory line period switch: same style as the new sections (teal pill on cream) */
 .fl .seg{background:#FFFBF5;border:1px solid #F3E4CC}
-.fl .seg button{color:#8A6440;font-family:'Space Grotesk',var(--f-ui)}
-.fl .seg button:hover:not(.on){color:#0E97B0}
-.fl .seg button.on{background:color-mix(in srgb,#0E97B0 14%,transparent);color:#0E97B0;box-shadow:none}
+.fl .seg > button{color:#8A6440;font-family:'Space Grotesk',var(--f-ui)}
+.fl .seg > button:hover:not(.on){color:#0E97B0}
+.fl .seg > button.on{background:color-mix(in srgb,#0E97B0 14%,transparent);color:#0E97B0;box-shadow:none}
 :root[data-theme="dark"] .fl .seg{background:rgba(255,255,255,.03);border-color:#3A2E22}
-:root[data-theme="dark"] .fl .seg button{color:#C9A784}
-:root[data-theme="dark"] .fl .seg button.on{background:color-mix(in srgb,#3CC8E0 16%,transparent);color:#3CC8E0}
+:root[data-theme="dark"] .fl .seg > button{color:#C9A784}
+:root[data-theme="dark"] .fl .seg > button.on{background:color-mix(in srgb,#3CC8E0 16%,transparent);color:#3CC8E0}
 
 /* section hover: lift, warm shadow, gold border, accent line sweeping across the top */
 .grid > .card{transition:transform .4s cubic-bezier(.2,.8,.2,1),box-shadow .4s cubic-bezier(.2,.8,.2,1),border-color .3s}
@@ -856,6 +860,13 @@ body{background:
 .drp-btn.on{color:#0E97B0;background:color-mix(in srgb,#0E97B0 14%,#fff);border-color:color-mix(in srgb,#0E97B0 35%,transparent)}
 .drp-caret{transition:transform .2s}
 .drp-btn.open .drp-caret{transform:rotate(180deg)}
+/* date picker as the last segment of a .seg pill (e.g. Sales Funnel: This month | This year | Custom) */
+.seg .drp.in-seg{display:inline-flex}
+.drp.in-seg .drp-btn{height:auto;padding:3px 9px;gap:5px;border:0;border-radius:6px;background:transparent;font:inherit;font-weight:600;font-size:11px;color:inherit;box-shadow:none}
+.drp.in-seg .drp-btn svg{width:13px;height:13px}
+.fx .seg .drp.in-seg .drp-btn{color:var(--fx-sub)}
+.fx .seg .drp.in-seg .drp-btn:hover,.fx .seg .drp.in-seg .drp-btn.open{color:var(--fx-cyan)}
+.fx .seg .drp.in-seg .drp-btn.on{background:color-mix(in srgb,var(--fx-cyan) 14%,transparent);color:var(--fx-cyan)}
 .drp-pop{position:absolute;top:calc(100% + 10px);right:0;z-index:30;display:grid;grid-template-columns:132px 268px;border-radius:16px;overflow:hidden;
   background:#fff;border:1px solid color-mix(in srgb,#0E97B0 28%,#F1DDBF);box-shadow:0 24px 50px -20px rgba(122,74,30,.4),0 0 0 4px color-mix(in srgb,#0E97B0 7%,transparent);
   animation:ftIn .16s ease-out;font-family:'Space Grotesk',var(--f-ui);color:#2B1608}
@@ -896,3 +907,17 @@ body{background:
 @media (max-width:560px){.drp-pop{grid-template-columns:1fr;right:-8px}.drp-pre{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid #F3E4CC}.drp-pre small{width:100%}}
 .drp-grid button.a:hover:not(:disabled),.drp-grid button.b:hover:not(:disabled){background:#0E97B0;color:#fff}
 .drp-grid button.in:hover:not(:disabled){background:color-mix(in srgb,#0E97B0 22%,transparent)}
+
+/* Sales Funnel: filter pill stays on the title row, top-right */
+.fn-card .fx-h{flex-wrap:nowrap;align-items:center}
+.fn-card .fx-h .fx-ht{flex:1 1 auto;min-width:0}
+.fn-card .fx-h .fx-ht h3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fn-card .fx-h .fx-hr{flex:none;margin-left:auto;flex-wrap:nowrap}
+@media (max-width:520px){.fn-card .fx-h{flex-wrap:wrap}}
+/* Cash Flow Radar + Sales Funnel row */
+.pair-rf{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,3fr);gap:var(--gap);min-width:0}
+.pair-rf > .card{grid-column:auto}
+@media (max-width:1100px){.pair-rf{grid-template-columns:minmax(0,1fr)}}
+/* funnel header: pill flush with the card's right edge, centred on the title */
+.fn-card .fx-hr{align-self:center}
+.fn-card .fx-hr .seg{margin-right:0}
